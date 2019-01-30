@@ -19,9 +19,11 @@
 // Debug tiles with colour information
 #define VISUALIZE_DEBUG_TILES 0
 
+vcTexture *pDEMTexture[2] = {};
+
 enum
 {
-  TileVertexResolution = 2, // This should match GPU struct size
+  TileVertexResolution = 5, // note: this should be odd
   TileIndexResolution = (TileVertexResolution - 1),
 
   MaxTileRequestAttempts = 3,
@@ -32,7 +34,7 @@ struct vcTileRenderer
   vcSettings *pSettings;
   vcQuadTree quadTree;
 
-  vcMesh *pFullTileMesh;
+  vcMesh *pTileMeshes[16];
   vcTexture *pEmptyTileTexture;
 
   udDouble3 cameraPosition;
@@ -52,12 +54,16 @@ struct vcTileRenderer
     vcShader *pProgram;
     vcShaderConstantBuffer *pConstantBuffer;
     vcShaderSampler *uniform_texture;
+    vcShaderSampler *uniform_dem0;
+    vcShaderSampler *uniform_dem1;
 
     struct
     {
       udFloat4x4 projectionMatrix;
-      udFloat4 eyePositions[TileVertexResolution * TileVertexResolution];
+      udFloat4x4 viewMatrix;
+      udFloat4 eyePositions[9];//TileVertexResolution * TileVertexResolution];
       udFloat4 colour;
+      udFloat4 demUVs[9 * 2];
     } everyObject;
   } presentShader;
 };
@@ -65,9 +71,8 @@ struct vcTileRenderer
 struct vcTileVertex
 {
   udFloat2 uv;
-  float index;
 };
-const vcVertexLayoutTypes vcTileVertexLayout[] = { vcVLT_Position3 };
+const vcVertexLayoutTypes vcTileVertexLayout[] = { vcVLT_TextureCoords2 };
 
 void vcTileRenderer_LoadThread(void *pThreadData)
 {
@@ -208,7 +213,40 @@ epilogue:
   }
 }
 
-void vcTileRenderer_BuildMeshVertices(vcTileVertex *pVerts, int *pIndicies, udFloat2 minUV, udFloat2 maxUV)
+int up = 1 << 0;
+int right = 1 << 1;
+int down = 1 << 2;
+int left = 1 << 3;
+
+// build meshes
+int meshConfigurations[] =
+{
+  0,
+
+  up,                      //  ^
+  right,                   //   >
+  down,                    //  .
+  left,                    // <
+
+  up | right,              //  ^>
+  up | down,               //  ^.
+  up | left,               // <^
+
+  right | down,            //  .>
+  right | left,            // < >
+
+  down | left,             // <.
+
+  up | right | down,       //  ^.>
+  up | left | right,       // <^>
+  up | left | down,        // <^.
+
+  down | left | right,     // <.>
+
+  up | left | right | down // <^.>
+};
+
+void vcTileRenderer_BuildMeshVertices(vcTileVertex *pVerts, int *pIndicies, udFloat2 minUV, udFloat2 maxUV, int collapseEdgeMask)
 {
   for (int y = 0; y < TileIndexResolution; ++y)
   {
@@ -216,6 +254,8 @@ void vcTileRenderer_BuildMeshVertices(vcTileVertex *pVerts, int *pIndicies, udFl
     {
       int index = y * TileIndexResolution + x;
       int vertIndex = y * TileVertexResolution + x;
+
+      // TODO: once figured out, remove commented code from all the conditionals statements below
       pIndicies[index * 6 + 0] = vertIndex + TileVertexResolution;
       pIndicies[index * 6 + 1] = vertIndex + 1;
       pIndicies[index * 6 + 2] = vertIndex;
@@ -223,6 +263,283 @@ void vcTileRenderer_BuildMeshVertices(vcTileVertex *pVerts, int *pIndicies, udFl
       pIndicies[index * 6 + 3] = vertIndex + TileVertexResolution;
       pIndicies[index * 6 + 4] = vertIndex + TileVertexResolution + 1;
       pIndicies[index * 6 + 5] = vertIndex + 1;
+
+      // corner cases
+      if ((collapseEdgeMask & down) && (collapseEdgeMask & right) && x >= (TileIndexResolution - 2) && y >= (TileIndexResolution - 2))
+      {
+        if (x == TileIndexResolution - 2 && y == TileIndexResolution - 2)
+        {
+          //pIndicies[index * 6 + 0] = vertIndex + TileVertexResolution;
+          //pIndicies[index * 6 + 1] = vertIndex + 1;
+          //pIndicies[index * 6 + 2] = vertIndex;
+
+          //pIndicies[index * 6 + 3] = vertIndex + TileVertexResolution;
+          //pIndicies[index * 6 + 4] = vertIndex + TileVertexResolution + 1;
+          //pIndicies[index * 6 + 5] = vertIndex + 1;
+        }
+        else if (x == TileIndexResolution - 1 && y == TileIndexResolution - 2)
+        {
+          //pIndicies[index * 6 + 0] = vertIndex + TileVertexResolution;
+          //pIndicies[index * 6 + 1] = vertIndex + 1;
+          //pIndicies[index * 6 + 2] = vertIndex;
+
+          // collapse
+          pIndicies[index * 6 + 3] = vertIndex;
+          pIndicies[index * 6 + 4] = vertIndex;
+          pIndicies[index * 6 + 5] = vertIndex;
+        }
+        else if (x == TileIndexResolution - 2 && y == TileIndexResolution - 1)
+        {
+          //pIndicies[index * 6 + 0] = vertIndex + TileVertexResolution;
+          //pIndicies[index * 6 + 1] = vertIndex + 1;
+          //pIndicies[index * 6 + 2] = vertIndex;
+
+          // collapse
+          pIndicies[index * 6 + 3] = vertIndex;
+          pIndicies[index * 6 + 4] = vertIndex;
+          pIndicies[index * 6 + 5] = vertIndex;
+        }
+        else // x == 1 && y == 1
+        {
+          pIndicies[index * 6 + 0] = vertIndex + TileVertexResolution - 1;
+          pIndicies[index * 6 + 1] = vertIndex + TileVertexResolution + 1;
+          pIndicies[index * 6 + 2] = vertIndex;
+
+          pIndicies[index * 6 + 3] = vertIndex + TileVertexResolution + 1;
+          pIndicies[index * 6 + 4] = vertIndex - TileVertexResolution + 1;
+          pIndicies[index * 6 + 5] = vertIndex;
+        }
+      }
+      else if ((collapseEdgeMask & down) && (collapseEdgeMask & left) && x <= 1 && y >= (TileIndexResolution - 2))
+      {
+        if (x == 0 && y == TileIndexResolution - 2)
+        {
+          // collapse
+          pIndicies[index * 6 + 0] = vertIndex + 1;
+          //pIndicies[index * 6 + 1] = vertIndex + 1;
+          pIndicies[index * 6 + 2] = vertIndex + 1;
+
+          // re-orient
+          pIndicies[index * 6 + 3] = vertIndex + TileVertexResolution + 1;
+          pIndicies[index * 6 + 4] = vertIndex + 1;
+          pIndicies[index * 6 + 5] = vertIndex;
+        }
+        else if (x == 1 && y == TileIndexResolution - 2)
+        {
+          //pIndicies[index * 6 + 0] = vertIndex + TileVertexResolution;
+          //pIndicies[index * 6 + 1] = vertIndex + 1;
+          //pIndicies[index * 6 + 2] = vertIndex;
+          //
+          //pIndicies[index * 6 + 3] = vertIndex + TileVertexResolution;
+          //pIndicies[index * 6 + 4] = vertIndex + TileVertexResolution + 1;
+          //pIndicies[index * 6 + 5] = vertIndex + 1;
+        }
+        else if (x == 0 && y == TileIndexResolution - 1)
+        {
+          // re-orient
+          pIndicies[index * 6 + 0] = vertIndex + TileVertexResolution;
+          pIndicies[index * 6 + 1] = vertIndex + 1;
+          pIndicies[index * 6 + 2] = vertIndex - TileVertexResolution;
+
+          // collapse
+          pIndicies[index * 6 + 3] = vertIndex + TileVertexResolution;
+          pIndicies[index * 6 + 4] = vertIndex + TileVertexResolution + 2;
+          pIndicies[index * 6 + 5] = vertIndex + 1;
+        }
+        else // x == 1 && y == 1
+        {
+          // collapse
+          //pIndicies[index * 6 + 0] = vertIndex + TileVertexResolution;
+          pIndicies[index * 6 + 1] = vertIndex + TileVertexResolution;
+          pIndicies[index * 6 + 2] = vertIndex + TileVertexResolution;
+
+          // re-orient
+          pIndicies[index * 6 + 3] = vertIndex + TileVertexResolution + 1;
+          pIndicies[index * 6 + 4] = vertIndex + 1;
+          pIndicies[index * 6 + 5] = vertIndex;
+        }
+      }
+      else if ((collapseEdgeMask & up) && (collapseEdgeMask & right) && x >= (TileIndexResolution - 2) && y <= 1)
+      {
+        if (x == TileIndexResolution - 2 && y == 0)
+        {
+          // collapse
+          pIndicies[index * 6 + 0] = vertIndex;
+          pIndicies[index * 6 + 1] = vertIndex;
+          pIndicies[index * 6 + 2] = vertIndex;
+
+          // re-orient triangle
+          //pIndicies[index * 6 + 3] = vertIndex + TileVertexResolution;
+          //pIndicies[index * 6 + 4] = vertIndex + TileVertexResolution + 1;
+          pIndicies[index * 6 + 5] = vertIndex;
+        }
+        else if (x == TileIndexResolution - 1 && y == 0)
+        {
+          pIndicies[index * 6 + 0] = vertIndex + TileVertexResolution;
+          pIndicies[index * 6 + 1] = vertIndex + 1;
+          pIndicies[index * 6 + 2] = vertIndex - 1;
+
+          pIndicies[index * 6 + 3] = vertIndex + TileVertexResolution;
+          pIndicies[index * 6 + 4] = vertIndex + TileVertexResolution + TileVertexResolution + 1;
+          pIndicies[index * 6 + 5] = vertIndex + 1;
+        }
+        else if (x == TileIndexResolution - 2 && y == 1)
+        {
+          //pIndicies[index * 6 + 0] = vertIndex + TileVertexResolution;
+          //pIndicies[index * 6 + 1] = vertIndex + 1;
+          //pIndicies[index * 6 + 2] = vertIndex;
+          //
+          //pIndicies[index * 6 + 3] = vertIndex + TileVertexResolution;
+          //pIndicies[index * 6 + 4] = vertIndex + TileVertexResolution + 1;
+          //pIndicies[index * 6 + 5] = vertIndex + 1;
+        }
+        else // x == TileIndexResolution -1 && y == 1
+        {
+          // collapse
+          pIndicies[index * 6 + 0] = vertIndex;
+          pIndicies[index * 6 + 1] = vertIndex;
+          //pIndicies[index * 6 + 2] = vertIndex;
+
+          // re-orient triangle
+          //pIndicies[index * 6 + 3] = vertIndex + TileVertexResolution;
+          //pIndicies[index * 6 + 4] = vertIndex + TileVertexResolution + 1;
+          pIndicies[index * 6 + 5] = vertIndex;
+        }
+      }
+      else if ((collapseEdgeMask & up) && (collapseEdgeMask & left) && x <= 1 && y <= 1)
+      {
+        if (x == 0 && y == 0)
+        {
+          pIndicies[index * 6 + 0] = vertIndex + TileVertexResolution + 1;
+          pIndicies[index * 6 + 1] = vertIndex + 2;
+          pIndicies[index * 6 + 2] = vertIndex;
+
+          pIndicies[index * 6 + 3] = vertIndex + TileVertexResolution + TileVertexResolution;
+          pIndicies[index * 6 + 4] = vertIndex + TileVertexResolution + 1;
+          pIndicies[index * 6 + 5] = vertIndex;
+        }
+        else if (x == 1 && y == 0)
+        {
+          // collapse
+          pIndicies[index * 6 + 0] = vertIndex + 1;
+          //pIndicies[index * 6 + 1] = vertIndex + 1;
+          pIndicies[index * 6 + 2] = vertIndex + 1;
+
+          //pIndicies[index * 6 + 3] = vertIndex + TileVertexResolution;
+          //pIndicies[index * 6 + 4] = vertIndex + TileVertexResolution + 1;
+          //pIndicies[index * 6 + 5] = vertIndex + 1;
+        }
+        else if (x == 0 && y == 1)
+        {
+          // collapse
+          pIndicies[index * 6 + 0] = vertIndex + 1;
+          //pIndicies[index * 6 + 1] = vertIndex + 1;
+          pIndicies[index * 6 + 2] = vertIndex + 1;
+
+          //pIndicies[index * 6 + 3] = vertIndex + TileVertexResolution;
+          //pIndicies[index * 6 + 4] = vertIndex + TileVertexResolution + 1;
+          //pIndicies[index * 6 + 5] = vertIndex + 1;
+        }
+        else // x==1, y == 1
+        {
+          // do nothing
+        }
+      }
+      else if (y == 0 && (collapseEdgeMask & up))
+      {
+        if ((x & 1) == 0)
+        {
+          //pIndicies[index * 6 + 0] = vertIndex + TileVertexResolution;
+          pIndicies[index * 6 + 1] = vertIndex + 2;
+          //pIndicies[index * 6 + 2] = vertIndex;
+
+          //pIndicies[index * 6 + 3] = vertIndex + TileVertexResolution;
+          //pIndicies[index * 6 + 4] = vertIndex + TileVertexResolution + 1;
+          pIndicies[index * 6 + 5] = vertIndex + 2;
+        }
+        else
+        {
+          // collapse
+          pIndicies[index * 6 + 0] = vertIndex + 1;
+          //pIndicies[index * 6 + 1] = vertIndex + 1;
+          pIndicies[index * 6 + 2] = vertIndex + 1;
+
+          //pIndicies[index * 6 + 3] = vertIndex + TileVertexResolution;
+          //pIndicies[index * 6 + 4] = vertIndex + TileVertexResolution + 1;
+          //pIndicies[index * 6 + 5] = vertIndex + 1;
+        }
+      }
+      else if (y == TileIndexResolution - 1 && (collapseEdgeMask & down))
+      {
+        if ((x & 1) == 0)
+        {
+          //pIndicies[index * 6 + 0] = vertIndex + TileVertexResolution;
+          //pIndicies[index * 6 + 1] = vertIndex + 1;
+          //pIndicies[index * 6 + 2] = vertIndex;
+
+          // collapse
+          //pIndicies[index * 6 + 3] = vertIndex + TileVertexResolution;
+          pIndicies[index * 6 + 4] = vertIndex + TileVertexResolution;
+          pIndicies[index * 6 + 5] = vertIndex + TileVertexResolution;
+        }
+        else
+        {
+          pIndicies[index * 6 + 0] = vertIndex + TileVertexResolution - 1;
+          //pIndicies[index * 6 + 1] = vertIndex + 1;
+          //pIndicies[index * 6 + 2] = vertIndex;
+
+          pIndicies[index * 6 + 3] = vertIndex + TileVertexResolution - 1;
+          //pIndicies[index * 6 + 4] = vertIndex + TileVertexResolution + 1;
+          //pIndicies[index * 6 + 5] = vertIndex + 1;
+        }
+      } else if (x == TileIndexResolution - 1 && (collapseEdgeMask & right))
+      {
+        if ((y & 1) == 0)
+        {
+         // pIndicies[index * 6 + 0] = vertIndex + TileVertexResolution;
+          //pIndicies[index * 6 + 1] = vertIndex + 1;
+          //pIndicies[index * 6 + 2] = vertIndex;
+
+          // collapse
+          pIndicies[index * 6 + 3] = vertIndex + 1;
+          pIndicies[index * 6 + 4] = vertIndex + 1;
+          //pIndicies[index * 6 + 5] = vertIndex + 1;
+        }
+        else
+        {
+          //pIndicies[index * 6 + 0] = vertIndex + TileVertexResolution;
+          pIndicies[index * 6 + 1] = vertIndex - TileVertexResolution + 1;
+          //pIndicies[index * 6 + 2] = vertIndex;
+
+          //pIndicies[index * 6 + 3] = vertIndex + TileVertexResolution;
+          //pIndicies[index * 6 + 4] = vertIndex + TileVertexResolution + 1;
+          pIndicies[index * 6 + 5] = vertIndex - TileVertexResolution + 1;
+        }
+      }
+      else if (x == 0 && (collapseEdgeMask & left))
+      {
+        if ((y & 1) == 0)
+        {
+          pIndicies[index * 6 + 0] = vertIndex + TileVertexResolution + TileVertexResolution;
+          //pIndicies[index * 6 + 1] = vertIndex + 1;
+          //pIndicies[index * 6 + 2] = vertIndex;
+
+          pIndicies[index * 6 + 3] = vertIndex + TileVertexResolution + TileVertexResolution;
+          //pIndicies[index * 6 + 4] = vertIndex + TileVertexResolution + 1;
+          //pIndicies[index * 6 + 5] = vertIndex + 1;
+        }
+        else
+        {
+          // collapse
+          //pIndicies[index * 6 + 0] = vertIndex + TileVertexResolution;
+          pIndicies[index * 6 + 1] = vertIndex + TileVertexResolution;
+          pIndicies[index * 6 + 2] = vertIndex + TileVertexResolution;
+
+          //pIndicies[index * 6 + 3] = vertIndex + TileVertexResolution;
+          //pIndicies[index * 6 + 4] = vertIndex + TileVertexResolution + 1;
+          //pIndicies[index * 6 + 5] = vertIndex + 1;
+        }
+      }
     }
   }
 
@@ -232,7 +549,15 @@ void vcTileRenderer_BuildMeshVertices(vcTileVertex *pVerts, int *pIndicies, udFl
     for (int x = 0; x < TileVertexResolution; ++x)
     {
       uint32_t index = y * TileVertexResolution + x;
-      pVerts[index].index = (float)index;
+      //pVerts[index].index = (float)index;
+      //pVerts[index].index = 0;
+
+      //if (x == 0 && (y == 0 || y == ((TileVertexResolution - 1) / 2) || y == TileVertexResolution - 1))
+      //  pVerts[index].index = (float)ii++;
+      //else if (x == ((TileVertexResolution - 1) / 2) && (y == 0 || y == ((TileVertexResolution - 1) / 2) || y == TileVertexResolution - 1))
+      //  pVerts[index].index = (float)ii++;
+      //else if (x == TileVertexResolution - 1 && (y == 0 || y == ((TileVertexResolution - 1) / 2) || y == TileVertexResolution - 1))
+      //  pVerts[index].index = (float)ii++;
 
       float normX = ((float)(x) / TileVertexResolution) * normalizeVertexPositionScale;
       float normY = ((float)(y) / TileVertexResolution) * normalizeVertexPositionScale;
@@ -270,11 +595,42 @@ udResult vcTileRenderer_Create(vcTileRenderer **ppTileRenderer, vcSettings *pSet
  vcShader_CreateFromText(&pTileRenderer->presentShader.pProgram, g_tileVertexShader, g_tileFragmentShader, vcSimpleVertexLayout, (int)udLengthOf(vcSimpleVertexLayout));
  vcShader_GetConstantBuffer(&pTileRenderer->presentShader.pConstantBuffer, pTileRenderer->presentShader.pProgram, "u_EveryObject", sizeof(pTileRenderer->presentShader.everyObject));
  vcShader_GetSamplerIndex(&pTileRenderer->presentShader.uniform_texture, pTileRenderer->presentShader.pProgram, "u_texture");
+ vcShader_GetSamplerIndex(&pTileRenderer->presentShader.uniform_dem0, pTileRenderer->presentShader.pProgram, "u_dem0");
+ vcShader_GetSamplerIndex(&pTileRenderer->presentShader.uniform_dem1, pTileRenderer->presentShader.pProgram, "u_dem1");
 
  // build meshes
- vcTileRenderer_BuildMeshVertices(verts, indicies, udFloat2::create(0.0f, 0.0f), udFloat2::create(1.0f, 1.0f));
- vcMesh_Create(&pTileRenderer->pFullTileMesh, vcTileVertexLayout, (int)udLengthOf(vcTileVertexLayout), verts, TileVertexResolution * TileVertexResolution, indicies, TileIndexResolution * TileIndexResolution * 6);
+ for (int i = 0; i < 16; ++i)
+ {
+   vcTileRenderer_BuildMeshVertices(verts, indicies, udFloat2::create(0.0f, 0.0f), udFloat2::create(1.0f, 1.0f), meshConfigurations[i]);
+   vcMesh_Create(&pTileRenderer->pTileMeshes[i], vcTileVertexLayout, (int)udLengthOf(vcTileVertexLayout), verts, TileVertexResolution * TileVertexResolution, indicies, TileIndexResolution * TileIndexResolution * 6);
+ }
  vcTexture_Create(&pTileRenderer->pEmptyTileTexture, 1, 1, &greyPixel);
+
+ const char *tiles[] = { "E:\\git\\vaultclient\\builds\\assets\\S28E152.hgt", "E:\\git\\vaultclient\\builds\\assets\\S28E153.hgt" };
+
+ for (int i = 0; i < 2; ++i)
+  {
+    void *pFileData;
+    int64_t fileLen;
+    udFile_Load(tiles[i], &pFileData, &fileLen);
+    int outputSize = 3601;
+    int inputSize = 3601;
+    uint16_t *pRealignedPixels = udAllocType(uint16_t, outputSize * outputSize, udAF_Zero);
+    uint16_t lastValidHeight = 0;
+    for (int y = 0; y < outputSize; ++y)
+    {
+      for (int x = 0; x < outputSize; ++x)
+      {
+        uint16_t p = ((uint16_t*)pFileData)[y * inputSize + x];
+        p = ((p & 0xff00) >> 8) | ((p & 0x00ff) << 8);
+        if (p > 40000)
+          p = lastValidHeight;
+        lastValidHeight = p;
+        pRealignedPixels[y * outputSize + x] = p;
+      }
+    }
+    vcTexture_Create(&pDEMTexture[i], outputSize, outputSize, pRealignedPixels, vcTextureFormat_R16, vcTFM_Linear, false, vcTWM_Clamp);//, vcTCF_None, 16);
+  }
 
   *ppTileRenderer = pTileRenderer;
   pTileRenderer = nullptr;
@@ -311,18 +667,24 @@ udResult vcTileRenderer_Destroy(vcTileRenderer **ppTileRenderer)
 
   vcShader_ReleaseConstantBuffer(pTileRenderer->presentShader.pProgram, pTileRenderer->presentShader.pConstantBuffer);
   vcShader_DestroyShader(&(pTileRenderer->presentShader.pProgram));
-  vcMesh_Destroy(&pTileRenderer->pFullTileMesh);
+  for (int i = 0; i < 16; ++i)
+    vcMesh_Destroy(&pTileRenderer->pTileMeshes[i]);
   vcTexture_Destroy(&pTileRenderer->pEmptyTileTexture);
 
   vcQuadTree_Destroy(&(*ppTileRenderer)->quadTree);
   udFree(*ppTileRenderer);
   *ppTileRenderer = nullptr;
 
+  vcTexture_Destroy(&pDEMTexture[0]);
+  vcTexture_Destroy(&pDEMTexture[1]);
   return udR_Success;
 }
 
 void vcTileRenderer_UpdateTileTexture(vcTileRenderer *pTileRenderer, vcQuadTreeNode *pNode)
 {
+  (pTileRenderer);
+  (pNode);
+
   vcTileRenderer::vcTileCache *pTileCache = &pTileRenderer->cache;
   if (pNode->renderInfo.loadStatus == vcNodeRenderInfo::vcTLS_None)
   {
@@ -350,6 +712,7 @@ void vcTileRenderer_UpdateTileTexture(vcTileRenderer *pTileRenderer, vcQuadTreeN
     vcTexture_Create(&pNode->renderInfo.pTexture, pNode->renderInfo.width, pNode->renderInfo.height, pNode->renderInfo.pData, vcTextureFormat_RGBA8, vcTFM_Linear, true, vcTWM_Clamp, vcTCF_None, 16);
     udFree(pNode->renderInfo.pData);
   }
+
 }
 
 void vcTileRenderer_UpdateTextureQueuesRecursive(vcTileRenderer *pTileRenderer, vcQuadTreeNode *pNode)
@@ -377,10 +740,10 @@ void vcTileRenderer_UpdateTextureQueues(vcTileRenderer *pTileRenderer)
     pTileRenderer->cache.tileLoadList[i]->renderInfo.tryLoad = false;
 
   // update visible tiles textures
-  vcTileRenderer_UpdateTextureQueuesRecursive(pTileRenderer, &pTileRenderer->quadTree.nodes.pPool[pTileRenderer->quadTree.rootIndex]);
+  //vcTileRenderer_UpdateTextureQueuesRecursive(pTileRenderer, &pTileRenderer->quadTree.nodes.pPool[pTileRenderer->quadTree.rootIndex]);
 
   // always request root
-  vcTileRenderer_UpdateTileTexture(pTileRenderer, &pTileRenderer->quadTree.nodes.pPool[pTileRenderer->quadTree.rootIndex]);
+  //vcTileRenderer_UpdateTileTexture(pTileRenderer, &pTileRenderer->quadTree.nodes.pPool[pTileRenderer->quadTree.rootIndex]);
 
   // remove from the queue any tiles that now invalid
   for (int i = 0; i < (int)pTileRenderer->cache.tileLoadList.length; ++i)
@@ -412,7 +775,7 @@ void vcTileRenderer_Update(vcTileRenderer *pTileRenderer, vcGISSpace *pSpace, co
     viewProjectionMatrix
   };
 
-  uint64_t startTime = udPerfCounterStart();
+  //uint64_t startTime = udPerfCounterStart();
 
   vcQuadTree_Update(&pTileRenderer->quadTree, viewInfo);
   vcQuadTree_Prune(&pTileRenderer->quadTree);
@@ -421,7 +784,8 @@ void vcTileRenderer_Update(vcTileRenderer *pTileRenderer, vcGISSpace *pSpace, co
   vcTileRenderer_UpdateTextureQueues(pTileRenderer);
   udReleaseMutex(pTileRenderer->cache.pMutex);
 
-  pTileRenderer->quadTree.metaData.generateTimeMs = udPerfCounterMilliseconds(startTime);
+  //pTileRenderer->quadTree.metaData.generateTimeMs = udPerfCounterMilliseconds(startTime);
+  printf("%f\n", pTileRenderer->quadTree.metaData.generateTimeMs);
 }
 
 bool vcTileRenderer_DrawNode(vcTileRenderer *pTileRenderer, vcQuadTreeNode *pNode, vcMesh *pMesh, const udDouble4x4 &view)
@@ -431,16 +795,27 @@ bool vcTileRenderer_DrawNode(vcTileRenderer *pTileRenderer, vcQuadTreeNode *pNod
   if (!pNode->rendered)
   {
 #if !VISUALIZE_DEBUG_TILES
-    if (pNode != &pTileRenderer->quadTree.nodes.pPool[pTileRenderer->quadTree.rootIndex])
-      return false;
+    //if (pNode != &pTileRenderer->quadTree.nodes.pPool[pTileRenderer->quadTree.rootIndex])
+    //  return false;
 #endif
     // only root node should touch this
     pTexture = pTileRenderer->pEmptyTileTexture;
   }
 
-  for (int t = 0; t < TileVertexResolution * TileVertexResolution; ++t)
+  int slippyLayerDescendAmount = 1;//udMin((MAX_SLIPPY_LEVEL - slippyTileCoord.z), gSlippyLayerDescendAmount[3]);
+
+  udDouble3 tileBounds[9];
+  for (int t = 0; t < 9; ++t)
   {
-    udFloat4 eyeSpaceVertexPosition = udFloat4::create(view * udDouble4::create(pNode->worldBounds[t], 0.0, 1.0));
+    udInt2 slippySampleCoord = udInt2::create((pNode->slippyPosition.x * (1 << slippyLayerDescendAmount)) + (t % 3),
+      (pNode->slippyPosition.y * (1 << slippyLayerDescendAmount)) + (t / 3));
+    vcGIS_SlippyToLocal(pTileRenderer->quadTree.pSpace, &tileBounds[t], slippySampleCoord, pNode->slippyPosition.z + slippyLayerDescendAmount);
+    //tileBounds[t] = udDouble2::create(localCorners[t].x, localCorners[t].y);
+  }
+
+  for (int t = 0; t < 9; ++t)//TileVertexResolution * TileVertexResolution; ++t)
+  {
+    udFloat4 eyeSpaceVertexPosition = udFloat4::create(view * udDouble4::create(tileBounds[t].toVector2(), 0.0, 1.0));
     pTileRenderer->presentShader.everyObject.eyePositions[t] = eyeSpaceVertexPosition;
   }
 
@@ -454,7 +829,54 @@ bool vcTileRenderer_DrawNode(vcTileRenderer *pTileRenderer, vcQuadTreeNode *pNod
   }
 #endif
 
-  vcShader_BindTexture(pTileRenderer->presentShader.pProgram, pTexture, 0);
+  //S28E153
+  udDouble3 r0 = udGeoZone_ToCartesian(pTileRenderer->quadTree.pSpace->zone, udDouble3::create(-28.0, 152, 0));
+  udDouble3 r1 = udGeoZone_ToCartesian(pTileRenderer->quadTree.pSpace->zone, udDouble3::create(-27.0, 153, 0));
+
+  //S28E152
+  udDouble3 r2 = udGeoZone_ToCartesian(pTileRenderer->quadTree.pSpace->zone, udDouble3::create(-28.0, 153.0, 0));
+  udDouble3 r3 = udGeoZone_ToCartesian(pTileRenderer->quadTree.pSpace->zone, udDouble3::create(-27.0, 154.0, 0));
+  // left brisbane (S28E152.hgt), right brisbane (S28E153.hgt)
+  //udDouble2 mins[] = { udDouble2::create(400781.82958118513, 6902797.6293904129), udDouble2::create(500000.00000000000, 6902394.7726541311) };
+  //udDouble2 maxs[] = { udDouble2::create(500000.00000000000, 7013171.6474111192), udDouble2::create(598325.33504640602, 7013564.7575185951) };
+
+
+  //{x = 400781.82958145085 y = 12986828.352577262 z = 0.00000000000000000 }
+
+  // left brisbane (S28E152.hgt), right brisbane (S28E153.hgt)
+  //udDouble2 mins[] = { udDouble2::create(400781.82958118513, 6902797.6293904129), udDouble2::create(500000.00000000000, 6902394.7726541311) };
+  //udDouble2 maxs[] = { udDouble2::create(500000.00000000000, 7013171.6474111192), udDouble2::create(598325.33504640602, 7013564.7575185951) };
+  //udDouble2 mins[] = { udDouble2::create(401674.66495384468, 6902394.7726660399), udDouble2::create(500000.00000000000, 6902797.6294023134) };
+  //udDouble2 maxs[] = { udDouble2::create(500000.00000000000, 6902797.6294023134), udDouble2::create(598325.33504615526, 6902394.7726660399) };
+  udDouble2 mins[] = { udDouble2::create(r0.x, r0.y), udDouble2::create(r2.x, r2.y) };
+  udDouble2 maxs[] = { udDouble2::create(r1.x, r1.y), udDouble2::create(r3.x, r3.y) };
+
+  //mins[0].x += 100.0; // manual correction (because its busted)
+  //maxs[0].y += 365.0; // manual correction (because its busted)
+  udDouble2 ranges[] = { maxs[0] - mins[0], maxs[1] - mins[1] };
+
+
+  bool in0Bounds = !(tileBounds[5].x < mins[0].x || tileBounds[0].x > maxs[0].x || tileBounds[2].y < mins[0].y || tileBounds[6].y > maxs[0].y);
+  bool in1Bounds = !(tileBounds[5].x < mins[1].x || tileBounds[0].x > maxs[1].x || tileBounds[2].y < mins[1].y || tileBounds[6].y > maxs[1].y);
+  if (!in0Bounds && !in1Bounds)
+    return true;
+
+  for (int d = 0; d < 2; ++d)
+  {
+    for (int t = 0; t < 9; ++t)
+    {
+      double u2 = (tileBounds[t].x - mins[d].x) / ranges[d].x;
+      double v2 = (tileBounds[t].y - mins[d].y) / ranges[d].y;
+
+      pTileRenderer->presentShader.everyObject.demUVs[d * 9 + t].x = float(u2);
+      pTileRenderer->presentShader.everyObject.demUVs[d * 9 + t].y = float(1.0 - v2);
+    }
+  }
+
+  vcShader_BindTexture(pTileRenderer->presentShader.pProgram, pTexture, 0, pTileRenderer->presentShader.uniform_texture);
+  vcShader_BindTexture(pTileRenderer->presentShader.pProgram, pDEMTexture[0], 1, pTileRenderer->presentShader.uniform_dem0);
+  vcShader_BindTexture(pTileRenderer->presentShader.pProgram, pDEMTexture[1], 2, pTileRenderer->presentShader.uniform_dem1);
+
   vcShader_BindConstantBuffer(pTileRenderer->presentShader.pProgram, pTileRenderer->presentShader.pConstantBuffer, &pTileRenderer->presentShader.everyObject, sizeof(pTileRenderer->presentShader.everyObject));
   vcMesh_Render(pMesh, TileIndexResolution * TileIndexResolution * 2); // 2 tris per quad
   return true;
@@ -490,12 +912,26 @@ bool vcTileRenderer_RecursiveRender(vcTileRenderer *pTileRenderer, vcQuadTreeNod
   shouldRender = childrenNeedThisTileRendered;
 #endif
 
+  shouldRender = vcQuadTree_IsLeafNode(pNode);
   if (shouldRender)
-    return vcTileRenderer_DrawNode(pTileRenderer, pNode, pTileRenderer->pFullTileMesh, view);
+  {
+    int meshIndex = 0;
+    for (int i = 0; i < 16; ++i)
+    {
+      if (meshConfigurations[i] == pNode->neighbours)
+      {
+        meshIndex = i;
+        break;
+      }
+    }
+    return vcTileRenderer_DrawNode(pTileRenderer, pNode, pTileRenderer->pTileMeshes[meshIndex], view);
+  }
 
   // This child doesn't need parent to draw itself
   return true;
 }
+
+#include "gl\opengl\vcOpenGL.h"
 
 void vcTileRenderer_Render(vcTileRenderer *pTileRenderer, const udDouble4x4 &view, const udDouble4x4 &proj)
 {
@@ -510,32 +946,47 @@ void vcTileRenderer_Render(vcTileRenderer *pTileRenderer, const udDouble4x4 &vie
   stencil.onDepthFail = vcGLSSOP_Keep;
   stencil.onStencilAndDepthPass = vcGLSSOP_Increment;
 
-  vcGLState_SetFaceMode(vcGLSFM_Solid, vcGLSCM_None);
+  vcGLState_SetFaceMode(vcGLSFM_Solid, vcGLSCM_Back);
   vcGLState_SetBlendMode(vcGLSBM_AdditiveSrcInterpolativeDst);
-  vcGLState_SetDepthStencilMode(vcGLSDM_LessOrEqual, false, &stencil);
+  vcGLState_SetDepthStencilMode(vcGLSDM_LessOrEqual, true, nullptr);//&stencil);
 
   if (pTileRenderer->pSettings->maptiles.blendMode == vcMTBM_Overlay)
     vcGLState_SetDepthStencilMode(vcGLSDM_Always, false, &stencil);
   else if (pTileRenderer->pSettings->maptiles.blendMode == vcMTBM_Underlay)
     vcGLState_SetViewportDepthRange(1.0f, 1.0f);
 
-  vcShader_Bind(pTileRenderer->presentShader.pProgram);
-  pTileRenderer->presentShader.everyObject.projectionMatrix = udFloat4x4::create(proj);
-  pTileRenderer->presentShader.everyObject.colour = udFloat4::create(1.f, 1.f, 1.f, pTileRenderer->pSettings->maptiles.transparency);
+  for (int i = 0; i < 2; ++i)
+  {
+    vcShader_Bind(pTileRenderer->presentShader.pProgram);
+    pTileRenderer->presentShader.everyObject.projectionMatrix = udFloat4x4::create(proj);
+    pTileRenderer->presentShader.everyObject.viewMatrix = udFloat4x4::create(view);
+    pTileRenderer->presentShader.everyObject.colour = udFloat4::create(0.f, 0.f, 0.f, 0.0f);//pTileRenderer->pSettings->maptiles.transparency);
 
-  vcQuadTreeNode *pRoot = &pTileRenderer->quadTree.nodes.pPool[pTileRenderer->quadTree.rootIndex];
-  vcTileRenderer_RecursiveRender(pTileRenderer, pRoot, viewWithMapTranslation);
-  vcTileRenderer_RecursiveSetRendered(pTileRenderer, pRoot, pRoot->rendered);
+    if (i == 1)
+    {
+      glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+      glPolygonOffset(1.0f, -0.1f);
+      pTileRenderer->presentShader.everyObject.colour = udFloat4::create(1.f, 1.f, 1.f, 1.f);//pTileRenderer->pSettings->maptiles.transparency);
+      vcGLState_SetDepthStencilMode(vcGLSDM_LessOrEqual, true, nullptr);//&stencil);
+    }
 
-  // Render the root tile again (if it hasn't already been rendered normally) to cover up gaps between tiles
-  if (!pRoot->rendered && pRoot->renderInfo.pTexture)
-    vcTileRenderer_DrawNode(pTileRenderer, pRoot, pTileRenderer->pFullTileMesh, viewWithMapTranslation);
+    vcQuadTreeNode *pRoot = &pTileRenderer->quadTree.nodes.pPool[pTileRenderer->quadTree.rootIndex];
+    vcTileRenderer_RecursiveRender(pTileRenderer, pRoot, viewWithMapTranslation);
+    vcTileRenderer_RecursiveSetRendered(pTileRenderer, pRoot, pRoot->rendered);
 
-  if (pTileRenderer->pSettings->maptiles.blendMode == vcMTBM_Underlay)
-    vcGLState_SetViewportDepthRange(0.0f, 1.0f);
-  vcGLState_SetDepthStencilMode(vcGLSDM_LessOrEqual, true, nullptr);
-  vcGLState_SetBlendMode(vcGLSBM_None);
-  vcShader_Bind(nullptr);
+    // Render the root tile again (if it hasn't already been rendered normally) to cover up gaps between tiles
+    //if (!pRoot->rendered && pRoot->renderInfo.pTexture)
+    //  vcTileRenderer_DrawNode(pTileRenderer, pRoot, pTileRenderer->pTileMeshes[0], viewWithMapTranslation);
+
+    if (pTileRenderer->pSettings->maptiles.blendMode == vcMTBM_Underlay)
+      vcGLState_SetViewportDepthRange(0.0f, 1.0f);
+    vcGLState_SetDepthStencilMode(vcGLSDM_LessOrEqual, true, nullptr);
+    vcGLState_SetBlendMode(vcGLSBM_None);
+    vcShader_Bind(nullptr);
+  }
+
+  glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+  glPolygonOffset(1.0f, 0.0f);
 }
 
 void vcTileRenderer_ClearTiles(vcTileRenderer *pTileRenderer)

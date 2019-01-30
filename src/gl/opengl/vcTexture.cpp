@@ -56,6 +56,15 @@ udResult vcTexture_Create(vcTexture **ppTexture, uint32_t width, uint32_t height
     type = GL_UNSIGNED_INT_24_8;
     glFormat = GL_DEPTH_STENCIL;
     break;
+  case vcTextureFormat_R16:
+    internalFormat = GL_R16;
+    type = GL_UNSIGNED_SHORT;
+    glFormat = GL_RED;
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+    glPixelStorei(GL_UNPACK_SKIP_PIXELS, 0);
+    glPixelStorei(GL_UNPACK_SKIP_ROWS, 0);
+    break;
   default:
     UD_ERROR_SET(udR_InvalidParameter_);
   }
@@ -64,6 +73,15 @@ udResult vcTexture_Create(vcTexture **ppTexture, uint32_t width, uint32_t height
 
   if (hasMipmaps)
     glGenerateMipmap(GL_TEXTURE_2D);
+
+  switch (format)
+  {
+  case vcTextureFormat_R16:
+    glPixelStorei(GL_PACK_ALIGNMENT, 4);
+    break;
+  default:
+    break;
+  }
 
   glBindTexture(GL_TEXTURE_2D, 0);
   VERIFY_GL();
@@ -150,6 +168,11 @@ udResult vcTexture_UploadPixels(vcTexture *pTexture, const void *pPixels, int wi
     internalFormat = GL_DEPTH24_STENCIL8;
     type = GL_UNSIGNED_INT_24_8;
     glFormat = GL_DEPTH_STENCIL;
+    break;
+  case vcTextureFormat_R16:
+    internalFormat = GL_R16; // TODO: verify this works
+    type = GL_UNSIGNED_SHORT;
+    glFormat = GL_RED;
     break;
   default:
     UD_ERROR_SET(udR_InvalidParameter_);

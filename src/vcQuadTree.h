@@ -43,6 +43,8 @@ struct vcQuadTreeNode
   uint32_t parentIndex;
   uint32_t childBlockIndex;
   uint32_t childMask; // [1, 2, 4, 8] for each corner [bottom left, bottom right, top left, top right]
+  udInt2 morten;
+  int neighbours;
   int level;
 
   bool visible;

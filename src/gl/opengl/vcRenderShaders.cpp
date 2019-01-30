@@ -159,40 +159,122 @@ in vec2 v_uv;
 out vec4 out_Colour;
 
 uniform sampler2D u_texture;
+//uniform sampler2D u_dem;
 
 void main()
 {
-  vec4 col = texture(u_texture, v_uv);
-  out_Colour = vec4(col.xyz * v_colour.xyz, 1.0) * v_colour.w;
+  //vec4 col = texture(u_texture, v_uv);
+  //out_Colour = vec4(col.xyz * v_colour.xyz, 1.0) * v_colour.w;
+
+  //vec4 dem = texture(u_dem, v_uv);
+  //out_Colour = vec4(vec3(dem.x / 10.0), 1.0);
+
+  float t = v_uv.x / 1000.0;//(max(0.5, v_uv.x / 1000.0) - 0.5) * 2;
+  out_Colour = vec4((t + v_colour.w) * v_colour.xyz, 1);
+ // out_Colour = vec4(v_colour.xyz, 1);
 }
 )shader";
 
 const char* const g_tileVertexShader = VERT_HEADER R"shader(
 //Input format
-layout(location = 0) in vec3 a_uv;
+layout(location = 0) in vec2 a_uv;
 
 //Output Format
 out vec4 v_colour;
 out vec2 v_uv;
 
-// This should match CPU struct size
-#define VERTEX_COUNT 2
+uniform sampler2D u_dem0;
+uniform sampler2D u_dem1;
+
+#define VERTEX_COUNT 3
 
 layout (std140) uniform u_EveryObject
 {
+  // TODO put into u_everything
   mat4 u_projection;
+  mat4 u_view;
+
   vec4 u_eyePositions[VERTEX_COUNT * VERTEX_COUNT];
   vec4 u_colour;
+  vec4 u_demUVs[2 * VERTEX_COUNT * VERTEX_COUNT];
 };
 
 void main()
 {
-  // TODO: could have precision issues on some devices
-  vec4 finalClipPos = u_projection * u_eyePositions[int(a_uv.z)];
+  vec4 eyePos = vec4(0.0);
+  vec2 demUV0 = vec2(0.0);
+  vec2 demUV1 = vec2(0.0);
 
-  v_uv = a_uv.xy;
+  {
+    vec2 indexUV = a_uv * 2;
+
+    float ui = floor(indexUV.x);
+    float vi = floor(indexUV.y);
+    float ui2 = min(2.0, ui + 1.0);
+    float vi2 = min(2.0, vi + 1.0);
+    vec2 uvt = vec2(indexUV.x - ui, indexUV.y - vi);
+
+    // bilinear position
+    vec4 p0 = u_eyePositions[int(vi * 3.0 + ui)];
+    vec4 p1 = u_eyePositions[int(vi * 3.0 + ui2)];
+    vec4 p2 = u_eyePositions[int(vi2 * 3.0 + ui)];
+    vec4 p3 = u_eyePositions[int(vi2 * 3.0 + ui2)];
+
+    vec4 pu = (p0 + (p1 - p0) * uvt.x);
+    vec4 pv = (p2 + (p3 - p2) * uvt.x);
+    eyePos = (pu + (pv - pu) * uvt.y);
+
+    // bilinear DEM heights 0
+    vec2 duv0 = u_demUVs[int(vi * 3.0 + ui)].xy;
+    vec2 duv1 = u_demUVs[int(vi * 3.0 + ui2)].xy;
+    vec2 duv2 = u_demUVs[int(vi2 * 3.0 + ui)].xy;
+    vec2 duv3 = u_demUVs[int(vi2 * 3.0 + ui2)].xy;
+
+    vec2 duvu = (duv0 + (duv1 - duv0) * uvt.x);
+    vec2 duvd = (duv2 + (duv3 - duv2) * uvt.x);
+    demUV0 = (duvu + (duvd - duvu) * uvt.y);
+
+    // bilinear DEM heights 1
+    duv0 = u_demUVs[9 + int(vi * 3.0 + ui)].xy;
+    duv1 = u_demUVs[9 + int(vi * 3.0 + ui2)].xy;
+    duv2 = u_demUVs[9 + int(vi2 * 3.0 + ui)].xy;
+    duv3 = u_demUVs[9 + int(vi2 * 3.0 + ui2)].xy;
+
+    duvu = (duv0 + (duv1 - duv0) * uvt.x);
+    duvd = (duv2 + (duv3 - duv2) * uvt.x);
+    demUV1 = (duvu + (duvd - duvu) * uvt.y);
+  }
+
+  float tileHeight = 0.0;
+
+  float use0 = float(demUV0.x >= 0.0 && demUV0.x <= 1.0 && demUV0.y >= 0.0 && demUV0.y <= 1.0);
+  float use1 = float(demUV1.x >= 0.0 && demUV1.x <= 1.0 && demUV1.y >= 0.0 && demUV1.y <= 1.0);
+  if (use0 == 0.0 && use1 == 0.0)
+  {
+
+  } else if (use0 == 0.0)
+  {
+    tileHeight = texture(u_dem1, demUV1).r;
+  } else
+  {
+    tileHeight = texture(u_dem0, demUV0).r;
+  }
+  tileHeight *= 65536.0;
+
+  vec4 h = u_view * vec4(0, 0, tileHeight, 1.0);
+  vec4 baseH = u_view * vec4(0, 0, 0, 1.0);
+  vec4 diff = h - baseH;
+  vec4 finalClipPos = u_projection * (eyePos + diff);
+
+  v_uv = vec2(tileHeight);//a_uv.xy;
   v_colour = u_colour;
+  if (use0 == 0.0)
+    v_colour = vec4(1,0,0,u_colour.w);
+  else
+    v_colour = vec4(0,1,0,u_colour.w);
+
   gl_Position = finalClipPos;
+
 }
 )shader";
 
