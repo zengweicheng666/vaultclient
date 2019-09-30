@@ -851,8 +851,8 @@ udResult vcRender_AsyncReadFrameDepth(vcRenderContext *pRenderContext)
   pickLocation.y = pRenderContext->sceneResolution.y - pickLocation.y - 1; // upside-down
 #endif
 
-  UD_ERROR_IF(!vcFramebuffer_EndReadPixels(pRenderContext->pFramebuffer, pRenderContext->pDepthTexture, pickLocation.x, pickLocation.y, 1, 1, depthBytes), udR_InternalError); // read previous copy
-  UD_ERROR_IF(!vcFramebuffer_BeginReadPixels(pRenderContext->pFramebuffer, pRenderContext->pDepthTexture, pickLocation.x, pickLocation.y, 1, 1, depthBytes), udR_InternalError); // begin copy for next frame read
+  UD_ERROR_IF(!vcTexture_EndReadPixels(pRenderContext->pDepthTexture, pickLocation.x, pickLocation.y, 1, 1, depthBytes, pRenderContext->pFramebuffer), udR_InternalError); // read previous copy
+  UD_ERROR_IF(!vcTexture_BeginReadPixels(pRenderContext->pDepthTexture, pickLocation.x, pickLocation.y, 1, 1, depthBytes, pRenderContext->pFramebuffer), udR_InternalError); // begin copy for next frame read
 
   // 24 bit unsigned int -> float
 #if GRAPHICS_API_OPENGL || GRAPHICS_API_METAL
@@ -1226,18 +1226,18 @@ vcRenderPickResult vcRender_PolygonPick(vcState *pProgramState, vcRenderContext 
       }
     }
 
+    udInt2 readPosition = { pRenderContext->picking.location.x, pRenderContext->picking.location.y };
     uint8_t colourBytes[4] = {};
     uint8_t depthBytes[4] = {};
 
     // Synchronously read back data
 #if GRAPHICS_API_OPENGL
-    // note: we render upside-down
-    vcFramebuffer_BeginReadPixels(pRenderContext->picking.pFramebuffer, pRenderContext->picking.pTexture, pRenderContext->picking.location.x, pRenderContext->effectResolution.y - pRenderContext->picking.location.y - 1, 1, 1, colourBytes);
-    vcFramebuffer_BeginReadPixels(pRenderContext->picking.pFramebuffer, pRenderContext->picking.pDepth, pRenderContext->picking.location.x, pRenderContext->effectResolution.y - pRenderContext->picking.location.y - 1, 1, 1, depthBytes);
-#else // All others are the same direction
-    vcFramebuffer_BeginReadPixels(pRenderContext->picking.pFramebuffer, pRenderContext->picking.pTexture, pRenderContext->picking.location.x, pRenderContext->picking.location.y, 1, 1, colourBytes);
-    vcFramebuffer_BeginReadPixels(pRenderContext->picking.pFramebuffer, pRenderContext->picking.pDepth, pRenderContext->picking.location.x, pRenderContext->picking.location.y, 1, 1, depthBytes);
+    // read upside down
+    sampleLocation.y = pRenderContext->effectResolution.y - pRenderContext->picking.location.y - 1;
 #endif
+    vcTexture_BeginReadPixels(pRenderContext->picking.pTexture, readPosition.x, readPosition.y, 1, 1, colourBytes, pRenderContext->picking.pFramebuffer);
+    vcTexture_BeginReadPixels(pRenderContext->picking.pDepth, readPosition.x, readPosition.y, 1, 1, depthBytes, pRenderContext->picking.pFramebuffer);
+
     vcGLState_SetViewport(0, 0, pRenderContext->sceneResolution.x, pRenderContext->sceneResolution.y);
 
     // 24 bit unsigned int -> float

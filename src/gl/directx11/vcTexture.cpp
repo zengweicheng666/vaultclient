@@ -16,40 +16,47 @@ enum
   MaxMipLevels = 4,
 };
 
-udResult vcTexture_GetFormatAndPixelSize(vcTexture *pTexture, vcTextureFormat format, DXGI_FORMAT &texFormat, int &pixelBytes)
+void vcTexture_GetFormatAndPixelSize(const vcTextureFormat format, bool isRenderTarget, int *pPixelSize = nullptr, DXGI_FORMAT *pTextureFormat = nullptr)
 {
-  udResult result = udR_Success;
+  DXGI_FORMAT textureFormat = DXGI_FORMAT_UNKNOWN;
+  int pixelSize = 0;
 
   switch (format)
   {
   case vcTextureFormat_RGBA8:
-    texFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
-    pixelBytes = 4;
+    textureFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
+    pixelSize = 4;
     break;
   case vcTextureFormat_BGRA8:
-    texFormat = DXGI_FORMAT_B8G8R8A8_UNORM;
-    pixelBytes = 4;
+    textureFormat = DXGI_FORMAT_B8G8R8A8_UNORM;
+    pixelSize = 4;
     break;
   case vcTextureFormat_D24S8:
-    if (pTexture->isRenderTarget)
-      texFormat = DXGI_FORMAT_R24G8_TYPELESS;
+    if (isRenderTarget)
+      textureFormat = DXGI_FORMAT_R24G8_TYPELESS;
     else
-      texFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
-    pixelBytes = 4;
+      textureFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
+    pixelSize = 4;
     break;
   case vcTextureFormat_D32F:
-    if (pTexture->isRenderTarget)
-      texFormat = DXGI_FORMAT_R32_TYPELESS;
+    if (isRenderTarget)
+      textureFormat = DXGI_FORMAT_R32_TYPELESS;
     else
-      texFormat = DXGI_FORMAT_R32_FLOAT;
-    pixelBytes = 4;
+      textureFormat = DXGI_FORMAT_R32_FLOAT;
+    pixelSize = 4;
     break;
-  default:
-    UD_ERROR_SET(udR_InvalidParameter_);
+
+  case vcTextureFormat_Unknown: // fall through
+  case vcTextureFormat_Cubemap: // fall through
+  case vcTextureFormat_Count:   // fall through
+    break;
   }
 
-epilogue:
-  return result;
+  if (pPixelSize != nullptr)
+    *pPixelSize = pixelSize;
+
+  if (pTextureFormat != nullptr)
+    *pTextureFormat = textureFormat;
 }
 
 udResult vcTexture_Create(vcTexture **ppTexture, uint32_t width, uint32_t height, const void *pPixels /*= nullptr*/, vcTextureFormat format /*= vcTextureFormat_RGBA8*/, vcTextureFilterMode filterMode /*= vcTFM_Nearest*/, bool hasMipmaps /*= false*/, vcTextureWrapMode wrapMode /*= vcTWM_Repeat*/, vcTextureCreationFlags flags /*= vcTCF_None*/, int32_t aniFilter /*= 0*/)
@@ -62,20 +69,18 @@ udResult vcTexture_Create(vcTexture **ppTexture, uint32_t width, uint32_t height
     hasMipmaps = false;
 
   udResult result = udR_Success;
+  DXGI_FORMAT texFormat = DXGI_FORMAT_UNKNOWN;
+  int pixelBytes = 0;
+  bool isDynamic = ((flags & vcTCF_Dynamic) == vcTCF_Dynamic);
+  bool isRenderTarget = ((flags & vcTCF_RenderTarget) == vcTCF_RenderTarget);
+
+  vcTexture_GetFormatAndPixelSize(format, isRenderTarget, &pixelBytes, &texFormat);
 
   vcTexture *pTexture = udAllocType(vcTexture, 1, udAF_Zero);
   UD_ERROR_NULL(pTexture, udR_MemoryAllocationFailure);
 
-  DXGI_FORMAT texFormat = DXGI_FORMAT_UNKNOWN;
-  int pixelBytes = 0;
-
-  pTexture->isDynamic = ((flags & vcTCF_Dynamic) == vcTCF_Dynamic);
-  pTexture->isRenderTarget = ((flags & vcTCF_RenderTarget) == vcTCF_RenderTarget);
-
-  UD_ERROR_CHECK(vcTexture_GetFormatAndPixelSize(pTexture, format, texFormat, pixelBytes));
-
   UINT bindFlags = D3D11_BIND_SHADER_RESOURCE;
-  if (pTexture->isRenderTarget)
+  if (isRenderTarget)
   {
     if (format == vcTextureFormat_D32F || format == vcTextureFormat_D24S8)
       bindFlags |= D3D11_BIND_DEPTH_STENCIL;
@@ -92,9 +97,9 @@ udResult vcTexture_Create(vcTexture **ppTexture, uint32_t width, uint32_t height
   desc.ArraySize = 1;
   desc.Format = texFormat;
   desc.SampleDesc.Count = 1;
-  desc.Usage = (pTexture->isDynamic ? D3D11_USAGE_DYNAMIC : D3D11_USAGE_DEFAULT);
+  desc.Usage = (isDynamic ? D3D11_USAGE_DYNAMIC : D3D11_USAGE_DEFAULT);
   desc.BindFlags = bindFlags;
-  desc.CPUAccessFlags = (pTexture->isDynamic ? D3D11_CPU_ACCESS_WRITE : 0);
+  desc.CPUAccessFlags = (isDynamic ? D3D11_CPU_ACCESS_WRITE : 0);
 
   D3D11_SUBRESOURCE_DATA subResource[MaxMipLevels];
   D3D11_SUBRESOURCE_DATA *pSubData = nullptr;
@@ -107,7 +112,7 @@ udResult vcTexture_Create(vcTexture **ppTexture, uint32_t width, uint32_t height
     pSubData = subResource;
 
     // Manually generate MaxMipLevels levels of mip maps
-    if (hasMipmaps && !pTexture->isRenderTarget)
+    if (hasMipmaps && !isRenderTarget)
     {
       const void *pLastPixels = pPixels;
       uint32_t lastWidth = width;
@@ -150,7 +155,7 @@ udResult vcTexture_Create(vcTexture **ppTexture, uint32_t width, uint32_t height
   UD_ERROR_IF(g_pd3dDevice->CreateTexture2D(&desc, pSubData, &pTexture->pTextureD3D) != S_OK, udR_InternalError);
 
   // Free mip map memory
-  if (hasMipmaps && pPixels && !pTexture->isRenderTarget)
+  if (hasMipmaps && pPixels && !isRenderTarget)
   {
     for (int i = 1; i < MaxMipLevels; ++i)
     {
@@ -164,7 +169,7 @@ udResult vcTexture_Create(vcTexture **ppTexture, uint32_t width, uint32_t height
     D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc;
     ZeroMemory(&srvDesc, sizeof(srvDesc));
     srvDesc.Format = texFormat;
-    if (pTexture->isRenderTarget)
+    if (isRenderTarget)
     {
       if (format == vcTextureFormat_D24S8)
         srvDesc.Format = DXGI_FORMAT_R24_UNORM_X8_TYPELESS;
@@ -216,10 +221,12 @@ udResult vcTexture_Create(vcTexture **ppTexture, uint32_t width, uint32_t height
   }
 
   pTexture->flags = flags;
-  pTexture->d3dFormat = desc.Format;
   pTexture->format = format;
   pTexture->width = width;
   pTexture->height = height;
+  pTexture->isDynamic = isDynamic;
+  pTexture->isRenderTarget = isRenderTarget;
+  pTexture->d3dFormat = desc.Format;
   vcGLState_ReportGPUWork(0, 0, size_t((pTexture->width * pTexture->height * pixelBytes) * (hasMipmaps ? 1.3333f : 1.0f)));
 
   *ppTexture = pTexture;
@@ -282,11 +289,15 @@ udResult vcTexture_UploadPixels(vcTexture *pTexture, const void *pPixels, int wi
   if (pTexture == nullptr || !pTexture->isDynamic || pTexture->width != width || pTexture->height != height || pTexture->pTextureD3D == nullptr)
     return udR_InvalidParameter_;
 
+  // Invalid formats
+  if (pTexture->format == vcTextureFormat_Unknown || pTexture->format == vcTextureFormat_Cubemap || pTexture->format == vcTextureFormat_Count)
+    return udR_InvalidParameter_;
+
   udResult result = udR_Success;
 
   DXGI_FORMAT texFormat = DXGI_FORMAT_UNKNOWN;
   int pixelBytes = 0;
-  UD_ERROR_CHECK(vcTexture_GetFormatAndPixelSize(pTexture, pTexture->format, texFormat, pixelBytes));
+  vcTexture_GetFormatAndPixelSize(pTexture->format, pTexture->isRenderTarget, &pixelBytes, &texFormat);
 
   D3D11_MAPPED_SUBRESOURCE mappedResource;
   UD_ERROR_IF(g_pd3dDeviceContext->Map(pTexture->pTextureD3D, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource) != S_OK, udR_InternalError);
@@ -433,4 +444,98 @@ udResult vcTexture_GetSize(vcTexture *pTexture, int *pWidth, int *pHeight)
     *pHeight = pTexture->height;
 
   return udR_Success;
+}
+
+bool vcTexture_BeginReadPixels(vcTexture *pTexture, uint32_t x, uint32_t y, uint32_t width, uint32_t height, void *pPixels, vcFramebuffer *pFramebuffer /*= nullptr*/)
+{
+  udUnused(pFramebuffer);
+
+  if (pTexture == nullptr || pPixels == nullptr || int(x + width) > pTexture->width || int(y + height) > pTexture->height)
+    return false;
+
+  // Invalid formats
+  if (pTexture->format == vcTextureFormat_Unknown || pTexture->format == vcTextureFormat_Cubemap || pTexture->format == vcTextureFormat_Count)
+    return false;
+
+  udResult result = udR_Success;
+  if ((pTexture->flags & vcTCF_AsynchronousRead) != vcTCF_AsynchronousRead && pTexture->pStagingTextureD3D[pTexture->stagingIndex] == nullptr)
+  {
+    // Texture not configured for pixel read back, create a single temporary staging texture.
+    D3D11_TEXTURE2D_DESC desc;
+    ZeroMemory(&desc, sizeof(desc));
+    desc.MipLevels = 1;
+    desc.ArraySize = 1;
+    desc.Format = pTexture->d3dFormat;
+    desc.SampleDesc.Count = 1;
+    desc.Usage = D3D11_USAGE_STAGING;
+    desc.BindFlags = 0;
+    desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+
+    // Create a full res texture, because subsequent reads may work with different regions. 
+    // Might be some optimizations here, if not D24S8 format, only recreate staging texture if sizes do not match.
+    desc.Width = pTexture->width;
+    desc.Height = pTexture->height;
+
+    UD_ERROR_IF(g_pd3dDevice->CreateTexture2D(&desc, nullptr, &pTexture->pStagingTextureD3D[pTexture->stagingIndex]) != S_OK, udR_InternalError);
+  }
+
+  // Begin asynchronous copy
+  if (pTexture->format == vcTextureFormat_D24S8 || pTexture->format == vcTextureFormat_D32F)
+  {
+    // If you use CopySubresourceRegion with a depth-stencil buffer or a multisampled resource, you must copy the whole subresource
+    // TODO: What about D32F format? (its not a depth-stencil)
+    g_pd3dDeviceContext->CopyResource(pTexture->pStagingTextureD3D[pTexture->stagingIndex], pTexture->pTextureD3D);
+  }
+  else
+  {
+    // left, top, front, right, bottom, back
+    D3D11_BOX srcBox = { x, y, 0, (x + width), (y + height), 1 };
+    g_pd3dDeviceContext->CopySubresourceRegion(pTexture->pStagingTextureD3D[pTexture->stagingIndex], 0, x, y, 0, pTexture->pTextureD3D, 0, &srcBox);
+  }
+
+  // If not configured for asynchronous read, perform copy immediately
+  if ((pTexture->flags & vcTCF_AsynchronousRead) != vcTCF_AsynchronousRead)
+  {
+    UD_ERROR_IF(!vcTexture_EndReadPixels(pTexture, x, y, width, height, pPixels, pFramebuffer), udR_InternalError);
+    pTexture->stagingIndex = 0; // force only using single staging texture
+  }
+
+epilogue:
+  return result == udR_Success;
+}
+
+bool vcTexture_EndReadPixels(vcTexture *pTexture, uint32_t x, uint32_t y, uint32_t width, uint32_t height, void *pPixels, vcFramebuffer *pFramebuffer /*= nullptr*/)
+{
+  udUnused(pFramebuffer);
+
+  if (pFramebuffer == nullptr || pTexture == nullptr || pPixels == nullptr || int(x + width) > pTexture->width || int(y + height) > pTexture->height)
+    return false;
+
+  // Invalid formats
+  if (pTexture->format == vcTextureFormat_Unknown || pTexture->format == vcTextureFormat_Cubemap || pTexture->format == vcTextureFormat_Count)
+    return false;
+  
+  // Invalid operation
+  if (pTexture->pStagingTextureD3D[pTexture->stagingIndex] == nullptr)
+    return false;
+
+  udResult result = udR_Success;
+  int pixelBytes = 0;
+  uint32_t *pPixelData = nullptr;
+  D3D11_MAPPED_SUBRESOURCE msr;
+  vcTexture_GetFormatAndPixelSize(pTexture->format, pTexture->isRenderTarget, &pixelBytes);
+
+  ID3D11Texture2D *pStagingTexture = pTexture->pStagingTextureD3D[pTexture->stagingIndex];
+  pTexture->stagingIndex = (pTexture->stagingIndex + 1) & 1;
+
+  UD_ERROR_IF(g_pd3dDeviceContext->Map(pStagingTexture, 0, D3D11_MAP_READ, 0, &msr) != S_OK, udR_InternalError);
+
+  pPixelData = ((uint32_t *)msr.pData) + (x + y * pTexture->width);
+  memcpy(pPixels, pPixelData, width * height * pixelBytes);
+
+epilogue:
+  if (pStagingTexture != nullptr)
+    g_pd3dDeviceContext->Unmap(pStagingTexture, 0); // unmapping a non-mapped texture seems fine
+
+  return result == udR_Success;
 }
