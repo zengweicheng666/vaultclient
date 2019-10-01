@@ -13,75 +13,99 @@
 
 uint32_t g_textureIndex = 0;
 
+void vcTexture_GetFormatAndPixelSize(const vcTextureFormat format, int *pPixelSize = nullptr, MTLPixelFormat *pPixelFormat = nullptr, MTLStorageMode *pStorageMode = nullptr, MTLTextureUsage *pTextureUsage = nullptr)
+{
+  // defaults
+  MTLPixelFormat pixelFormat = MTLPixelFormatRGBA8Unorm;
+  MTLStorageMode storageMode = MTLStorageModeManaged; 
+  MTLTextureUsage textureUsage = MTLTextureUsageShaderRead;
+  int pixelSize = 0; // in bytes
+
+#if UDPLATFORM_IOS || UDPLATFORM_IOS_SIMULATOR
+  pTextureDesc.storageMode = MTLStorageModeShared; // default on iOS and tvOS
+#endif
+
+  switch (format)
+  {
+  case vcTextureFormat_RGBA8:
+    pixelFormat = MTLPixelFormatRGBA8Unorm;
+    textureUsage = MTLTextureUsagePixelFormatView | MTLTextureUsageShaderRead;
+    pixelBytes = 4;
+#if UDPLATFORM_IOS || UDPLATFORM_IOS_SIMULATOR
+    storageMode = MTLStorageModeShared;
+#elif UDPLATFORM_OSX
+    storageMode = MTLStorageModeManaged;
+#endif
+    break;
+  case vcTextureFormat_BGRA8:
+    pixelFormat = MTLPixelFormatBGRA8Unorm;
+    textureUsage = MTLTextureUsageShaderRead;
+    pixelBytes = 4;
+#if UDPLATFORM_IOS || UDPLATFORM_IOS_SIMULATOR
+    storageMode = MTLStorageModeShared;
+#elif UDPLATFORM_OSX
+    storageMode = MTLStorageModeManaged;
+#endif
+    break;
+  case vcTextureFormat_D32F:
+    pixelFormat = MTLPixelFormatDepth32Float;
+    usage = MTLTextureUsageShaderRead;
+    storageMode = MTLStorageModePrivate;
+    pixelBytes = 4;
+    break;
+  case vcTextureFormat_D24S8:
+    usage = MTLTextureUsageShaderRead;
+    storageMode = MTLStorageModePrivate;
+    pixelBytes = 4;
+#if UDPLATFORM_IOS || UDPLATFORM_IOS_SIMULATOR
+    pixelFormat = MTLPixelFormatDepth32Float;
+#elif UDPLATFORM_OSX
+    pixelFormat = MTLPixelFormatDepth24Unorm_Stencil8;
+#endif
+    break;
+
+  case vcTextureFormat_Unknown: // fall through
+  case vcTextureFormat_Cubemap: // fall through
+  case vcTextureFormat_Count:
+    break;
+  }
+
+  if (pPixelFormat != nullptr)
+    *pPixelFormat = pixelFormat;
+
+  if (pStorageMode != nullptr)
+    *pStorageMode = storageMode;
+
+  if (pTextureUsage != nullptr)
+    *pTextureUsage = textureUsage;
+
+  if (pPixelSize != nullptr)
+    *pPixelSize = pixelSize;
+}
+
 udResult vcTexture_Create(struct vcTexture **ppTexture, uint32_t width, uint32_t height, const void *pPixels, vcTextureFormat format /*= vcTextureFormat_RGBA8*/, vcTextureFilterMode filterMode /*= vcTFM_Nearest*/, bool hasMipmaps /*= false*/, vcTextureWrapMode wrapMode /*= vcTWM_Repeat*/, vcTextureCreationFlags flags, int32_t aniFilter /* = 0 */)
 {
-  if (ppTexture == nullptr || width == 0 || height == 0)
+  if (ppTexture == nullptr || width == 0 || height == 0 || format == vcTextureFormat_Unknown || format == vcTextureFormat_Count || format == vcTextureFormat_Cubemap)
     return udR_InvalidParameter_;
 
   udUnused(hasMipmaps);
 
   udResult result = udR_Success;
-  int pixelBytes = 4;
+  MTLPixelFormat pixelFormat = MTLPixelFormatRGBA8Unorm;
+  MTLStorageMode storageMode = MTLStorageModeManaged; 
+  MTLTextureUsage textureUsage = MTLTextureUsageShaderRead;
+  int pixelBytes = 0;
+  vcTexture_GetFormatAndPixelSize(format, &pixelBytes, &pixelFormat, &storageMode, &textureUsage);
+
   vcTexture *pText = udAllocType(vcTexture, 1, udAF_Zero);
 
   @autoreleasepool
   {
     MTLTextureDescriptor *pTextureDesc = [[MTLTextureDescriptor alloc] init];
 
-    switch (format)
-    {
-    case vcTextureFormat_Unknown:
-      return udR_InvalidParameter_;
-    case vcTextureFormat_RGBA8:
-      pTextureDesc.pixelFormat = MTLPixelFormatRGBA8Unorm;
-  #if UDPLATFORM_IOS || UDPLATFORM_IOS_SIMULATOR
-      pTextureDesc.storageMode = MTLStorageModeShared;
-  #elif UDPLATFORM_OSX
-      pTextureDesc.storageMode = MTLStorageModeManaged;
-  #else
-  # error "Unsupported platform!"
-  #endif
-      pTextureDesc.usage = MTLTextureUsagePixelFormatView | MTLTextureUsageShaderRead;
-      pixelBytes = 4;
-      break;
-    case vcTextureFormat_BGRA8:
-      pTextureDesc.pixelFormat = MTLPixelFormatBGRA8Unorm;
-  #if UDPLATFORM_IOS || UDPLATFORM_IOS_SIMULATOR
-      pTextureDesc.storageMode = MTLStorageModeShared;
-  #elif UDPLATFORM_OSX
-      pTextureDesc.storageMode = MTLStorageModeManaged;
-  #else
-  # error "Unsupported platform!"
-  #endif
-      pTextureDesc.usage = MTLTextureUsageShaderRead;
-      pixelBytes = 4;
-      break;
-    case vcTextureFormat_D32F:
-      pTextureDesc.pixelFormat = MTLPixelFormatDepth32Float;
-      pTextureDesc.usage = MTLTextureUsageShaderRead;
-      pTextureDesc.storageMode = MTLStorageModePrivate;
-      pixelBytes = 4;
-      break;
-    case vcTextureFormat_D24S8:
-  #if UDPLATFORM_IOS || UDPLATFORM_IOS_SIMULATOR
-      pTextureDesc.pixelFormat = MTLPixelFormatDepth32Float;
-  #elif UDPLATFORM_OSX
-      pTextureDesc.pixelFormat = MTLPixelFormatDepth24Unorm_Stencil8;
-  #else
-  # error "Unsupported platform!"
-  #endif
-      pTextureDesc.usage = MTLTextureUsageShaderRead;
-      pTextureDesc.storageMode = MTLStorageModePrivate;
-      pixelBytes = 4;
-      break;
-    case vcTextureFormat_Cubemap:
-      return udR_InvalidParameter_;
-      break;
-    case vcTextureFormat_Count:
-      return udR_InvalidParameter_;
-      break;
-    }
-
+    pTextureDesc.pixelFormat = pixelFormat;
+    pTextureDesc.storageMode = storageMode;
+    pTextureDesc.textureUsage = textureUsage;
     pTextureDesc.width = width;
     pTextureDesc.height = height;
     pTextureDesc.mipmapLevelCount = 1;
@@ -94,7 +118,7 @@ udResult vcTexture_Create(struct vcTexture **ppTexture, uint32_t width, uint32_t
     pText->width = (uint32_t)pTextureDesc.width;
     pText->height = (uint32_t)pTextureDesc.height;
     pText->format = format;
-      pText->ID = g_textureIndex;
+    pText->ID = g_textureIndex;
     pText->flags = flags;
 
     int count = (flags & vcTCF_RenderTarget) || (flags & vcTCF_Dynamic) ? DRAWABLES : 1;
@@ -229,11 +253,15 @@ bool vcTexture_CreateFromFilename(struct vcTexture **ppTexture, const char *pFil
 
 udResult vcTexture_UploadPixels(struct vcTexture *pTexture, const void *pPixels, int width, int height)
 {
-  udResult result = udR_Failure_;
-  int pixelBytes = 4; // assumed
-
   if (pTexture == nullptr || pPixels == nullptr || width == 0 || height == 0)
-    return result;
+    return udR_InvalidParameter_;
+
+  if (pTexture->format == vcTextureFormat_Unknown || pTexture->format == vcTextureFormat_Cubemap || pTexture->format == vcTextureFormat_Count)
+    return udR_InvalidParameter_;
+
+  udResult result = udR_Success;
+  int pixelBytes = 0;
+  vcTexture_GetFormatAndPixelSize(pTexture->format, &pixelBytes);
 
   if ((int)pTexture->width == width && (int)pTexture->height == height)
   {
@@ -362,4 +390,66 @@ udResult vcTexture_GetSize(struct vcTexture *pTexture, int *pWidth, int *pHeight
     *pHeight = (int)pTexture->height;
 
   return udR_Success;
+}
+
+bool vcTexture_BeginReadPixels(vcTexture *pTexture, uint32_t x, uint32_t y, uint32_t width, uint32_t height, void *pPixels, vcFramebuffer *pFramebuffer /*= nullptr*/)
+{
+  udUnused(pPixels);
+  
+  if (pFramebuffer == nullptr || pTexture == nullptr || (x + width) > pTexture->width || (y + height) > pTexture->height)
+    return false;
+
+  if (pTexture->format == vcTextureFormat_Unknown || pTexture->format == vcTextureFormat_Cubemap || pTexture->format == vcTextureFormat_Count)
+    return false;
+
+  udResult result = udR_Success;
+  int pixelBytes = 0;
+  vcTexture_GetFormatAndPixelSize(pTexture->format, &pixelBytes);
+
+  @autoreleasepool
+  {
+    if (pTexture->blitTarget == 0)
+    {
+      [_renderer.blitBuffers addObject:[_device newBufferWithLength:pixelBytes * pTexture->width * pTexture->height options:MTLResourceStorageModeShared]];
+      
+      pTexture->blitTarget = ++g_blitTargetID;
+      pFramebuffer->actions |= vcRFA_Blit;
+    }
+    else if (_renderer.blitBuffers[pTexture->blitTarget - 1].length < 4 * pTexture->width * pTexture->height)
+    {
+      [_renderer.blitBuffers replaceObjectAtIndex:pTexture->blitTarget - 1 withObject:[_device newBufferWithLength:4 * pTexture->width * pTexture->height options:MTLResourceStorageModeShared]];
+    }
+    
+    [_renderer.blitEncoder copyFromTexture:_renderer.textures[[NSString stringWithFormat:@"%u",pTexture->ID]] sourceSlice:0 sourceLevel:0 sourceOrigin:MTLOriginMake(0, 0, 0) sourceSize:MTLSizeMake(pTexture->width, pTexture->height, 1) toBuffer:_renderer.blitBuffers[pTexture->blitTarget - 1] destinationOffset:0 destinationBytesPerRow:4 * pTexture->width destinationBytesPerImage:4 * pTexture->width * pTexture->height];
+  
+    [_renderer flushBlit];
+  }
+  
+  return result == udR_Success;
+}
+
+bool vcTexture_EndReadPixels(vcTexture *pTexture, uint32_t x, uint32_t y, uint32_t width, uint32_t height, void *pPixels)
+{
+  if (pTexture == nullptr || pPixels == nullptr || (x + width) > pTexture->width || (y + height) > pTexture->height)
+    return false;
+
+  if (pTexture->format == vcTextureFormat_Unknown || pTexture->format == vcTextureFormat_Cubemap || pTexture->format == vcTextureFormat_Count || pTexture->blitTarget == 0)
+    return false;
+
+  udResult result = udR_Success;
+  int pixelBytes = 0;
+  vcTexture_GetFormatAndPixelSize(pTexture->format, &pixelBytes);
+
+  uint32_t *pSource = (uint32_t*)[_renderer.blitBuffers[pTexture->blitTarget - 1] contents];
+  pSource += ((y * pTexture->width) + x);
+  
+  uint32_t rowBytes = pixelBytes * width;
+  
+  for (uint32_t i = 0; i < height; ++i)
+  {
+    for (uint32_t j = 0; j < width; ++j)
+      *((uint32_t*)pPixels + (i * rowBytes)) = *(pSource + (i * pTexture->width) + j);
+  }
+  
+  return result == udR_Success;
 }

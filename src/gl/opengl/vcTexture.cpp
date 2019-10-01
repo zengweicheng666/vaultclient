@@ -50,7 +50,7 @@ void vcTexture_GetFormatAndPixelSize(const vcTextureFormat format, int *pPixelSi
 
   case vcTextureFormat_Unknown: // fall through
   case vcTextureFormat_Cubemap: // fall through
-  case vcTextureFormat_Count:   // fall through
+  case vcTextureFormat_Count:
     break;
   }
 
@@ -69,7 +69,7 @@ void vcTexture_GetFormatAndPixelSize(const vcTextureFormat format, int *pPixelSi
 
 udResult vcTexture_Create(vcTexture **ppTexture, uint32_t width, uint32_t height, const void *pPixels, vcTextureFormat format /*= vcTextureFormat_RGBA8*/, vcTextureFilterMode filterMode /*= vcTFM_Nearest*/, bool hasMipmaps /*= false*/, vcTextureWrapMode wrapMode /*= vcTWM_Repeat*/, vcTextureCreationFlags flags /*= vcTCF_None*/, int32_t aniFilter /* = 0 */)
 {
-  if (ppTexture == nullptr || width == 0 || height == 0)
+  if (ppTexture == nullptr || width == 0 || height == 0 || format == vcTextureFormat_Unknown || format == vcTextureFormat_Count || format == vcTextureFormat_Cubemap)
     return udR_InvalidParameter_;
 
   udResult result = udR_Success;
@@ -77,7 +77,6 @@ udResult vcTexture_Create(vcTexture **ppTexture, uint32_t width, uint32_t height
   GLenum pixelType = GL_INVALID_ENUM;
   GLint pixelFormat = GL_INVALID_ENUM;
   int pixelBytes = 0;
-
   vcTexture_GetFormatAndPixelSize(format, &pixelBytes, &textureFormat, &pixelType, &pixelFormat);
 
   vcTexture *pTexture = udAllocType(vcTexture, 1, udAF_Zero);
@@ -182,7 +181,6 @@ udResult vcTexture_UploadPixels(vcTexture *pTexture, const void *pPixels, int wi
   if (pTexture == nullptr || pPixels == nullptr || width == 0 || height == 0)
     return udR_InvalidParameter_;
 
-  // Invalid formats
   if (pTexture->format == vcTextureFormat_Unknown || pTexture->format == vcTextureFormat_Cubemap || pTexture->format == vcTextureFormat_Count)
     return udR_InvalidParameter_;
 
@@ -192,7 +190,6 @@ udResult vcTexture_UploadPixels(vcTexture *pTexture, const void *pPixels, int wi
   GLenum pixelType = GL_INVALID_ENUM;
   GLint pixelFormat = GL_INVALID_ENUM;
   int pixelBytes = 0;
-
   vcTexture_GetFormatAndPixelSize(pTexture->format, &pixelBytes, &textureFormat, &pixelType, &pixelFormat);
 
   glBindTexture(GL_TEXTURE_2D, pTexture->id);
@@ -294,11 +291,9 @@ udResult vcTexture_GetSize(vcTexture *pTexture, int *pWidth, int *pHeight)
 
 bool vcTexture_BeginReadPixels(vcTexture *pTexture, uint32_t x, uint32_t y, uint32_t width, uint32_t height, void *pPixels, vcFramebuffer *pFramebuffer /*= nullptr*/)
 {
-  // Invalid params
   if (pFramebuffer == nullptr || pTexture == nullptr || pPixels == nullptr || int(x + width) > pTexture->width || int(y + height) > pTexture->height)
     return false;
 
-  // Invalid formats
   if (pTexture->format == vcTextureFormat_Unknown || pTexture->format == vcTextureFormat_Cubemap || pTexture->format == vcTextureFormat_Count)
     return false;
 
@@ -306,7 +301,6 @@ bool vcTexture_BeginReadPixels(vcTexture *pTexture, uint32_t x, uint32_t y, uint
   void *pPixelBuffer = pPixels;
   GLenum pixelType = GL_INVALID_ENUM;
   GLint pixelFormat = GL_INVALID_ENUM;
-
   vcTexture_GetFormatAndPixelSize(pTexture->format, nullptr, nullptr, &pixelType, &pixelFormat);
 
   UD_ERROR_IF(!vcFramebuffer_Bind(pFramebuffer), udR_InternalError);
@@ -329,23 +323,16 @@ epilogue:
   return result == udR_Success;
 }
 
-bool vcTexture_EndReadPixels(vcTexture *pTexture, uint32_t x, uint32_t y, uint32_t width, uint32_t height, void *pPixels, vcFramebuffer *pFramebuffer /*= nullptr*/)
+bool vcTexture_EndReadPixels(vcTexture *pTexture, uint32_t x, uint32_t y, uint32_t width, uint32_t height, void *pPixels)
 {
-  // Invalid params
-  if (pFramebuffer == nullptr || pTexture == nullptr || pPixels == nullptr || int(x + width) > pTexture->width || int(y + height) > pTexture->height)
+  if (pTexture == nullptr || pPixels == nullptr || int(x + width) > pTexture->width || int(y + height) > pTexture->height)
     return false;
 
-  // Invalid formats
-  if (pTexture->format == vcTextureFormat_Unknown || pTexture->format == vcTextureFormat_Cubemap || pTexture->format == vcTextureFormat_Count)
-    return false;
-
-  // Invalid operation
-  if ((pTexture->flags & vcTCF_AsynchronousRead) != vcTCF_AsynchronousRead)
+  if (pTexture->format == vcTextureFormat_Unknown || pTexture->format == vcTextureFormat_Cubemap || pTexture->format == vcTextureFormat_Count || (pTexture->flags & vcTCF_AsynchronousRead) != vcTCF_AsynchronousRead)
     return false;
 
   udResult result = udR_Success;
   int pixelBytes = 0;
-
   vcTexture_GetFormatAndPixelSize(pTexture->format, &pixelBytes);
 
   // Read previous PBO back to CPU

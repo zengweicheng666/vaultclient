@@ -48,7 +48,7 @@ void vcTexture_GetFormatAndPixelSize(const vcTextureFormat format, bool isRender
 
   case vcTextureFormat_Unknown: // fall through
   case vcTextureFormat_Cubemap: // fall through
-  case vcTextureFormat_Count:   // fall through
+  case vcTextureFormat_Count:
     break;
   }
 
@@ -61,7 +61,7 @@ void vcTexture_GetFormatAndPixelSize(const vcTextureFormat format, bool isRender
 
 udResult vcTexture_Create(vcTexture **ppTexture, uint32_t width, uint32_t height, const void *pPixels /*= nullptr*/, vcTextureFormat format /*= vcTextureFormat_RGBA8*/, vcTextureFilterMode filterMode /*= vcTFM_Nearest*/, bool hasMipmaps /*= false*/, vcTextureWrapMode wrapMode /*= vcTWM_Repeat*/, vcTextureCreationFlags flags /*= vcTCF_None*/, int32_t aniFilter /*= 0*/)
 {
-  if (ppTexture == nullptr || width == 0 || height == 0)
+  if (ppTexture == nullptr || width == 0 || height == 0 || format == vcTextureFormat_Unknown || format == vcTextureFormat_Count || format == vcTextureFormat_Cubemap)
     return udR_InvalidParameter_;
 
   // only allow mip maps for certain formats
@@ -73,7 +73,6 @@ udResult vcTexture_Create(vcTexture **ppTexture, uint32_t width, uint32_t height
   int pixelBytes = 0;
   bool isDynamic = ((flags & vcTCF_Dynamic) == vcTCF_Dynamic);
   bool isRenderTarget = ((flags & vcTCF_RenderTarget) == vcTCF_RenderTarget);
-
   vcTexture_GetFormatAndPixelSize(format, isRenderTarget, &pixelBytes, &texFormat);
 
   vcTexture *pTexture = udAllocType(vcTexture, 1, udAF_Zero);
@@ -289,7 +288,6 @@ udResult vcTexture_UploadPixels(vcTexture *pTexture, const void *pPixels, int wi
   if (pTexture == nullptr || !pTexture->isDynamic || pTexture->width != width || pTexture->height != height || pTexture->pTextureD3D == nullptr)
     return udR_InvalidParameter_;
 
-  // Invalid formats
   if (pTexture->format == vcTextureFormat_Unknown || pTexture->format == vcTextureFormat_Cubemap || pTexture->format == vcTextureFormat_Count)
     return udR_InvalidParameter_;
 
@@ -453,7 +451,6 @@ bool vcTexture_BeginReadPixels(vcTexture *pTexture, uint32_t x, uint32_t y, uint
   if (pTexture == nullptr || pPixels == nullptr || int(x + width) > pTexture->width || int(y + height) > pTexture->height)
     return false;
 
-  // Invalid formats
   if (pTexture->format == vcTextureFormat_Unknown || pTexture->format == vcTextureFormat_Cubemap || pTexture->format == vcTextureFormat_Count)
     return false;
 
@@ -496,7 +493,7 @@ bool vcTexture_BeginReadPixels(vcTexture *pTexture, uint32_t x, uint32_t y, uint
   // If not configured for asynchronous read, perform copy immediately
   if ((pTexture->flags & vcTCF_AsynchronousRead) != vcTCF_AsynchronousRead)
   {
-    UD_ERROR_IF(!vcTexture_EndReadPixels(pTexture, x, y, width, height, pPixels, pFramebuffer), udR_InternalError);
+    UD_ERROR_IF(!vcTexture_EndReadPixels(pTexture, x, y, width, height, pPixels), udR_InternalError);
     pTexture->stagingIndex = 0; // force only using single staging texture
   }
 
@@ -504,19 +501,12 @@ epilogue:
   return result == udR_Success;
 }
 
-bool vcTexture_EndReadPixels(vcTexture *pTexture, uint32_t x, uint32_t y, uint32_t width, uint32_t height, void *pPixels, vcFramebuffer *pFramebuffer /*= nullptr*/)
+bool vcTexture_EndReadPixels(vcTexture *pTexture, uint32_t x, uint32_t y, uint32_t width, uint32_t height, void *pPixels)
 {
-  udUnused(pFramebuffer);
-
-  if (pFramebuffer == nullptr || pTexture == nullptr || pPixels == nullptr || int(x + width) > pTexture->width || int(y + height) > pTexture->height)
+  if (pTexture == nullptr || pPixels == nullptr || int(x + width) > pTexture->width || int(y + height) > pTexture->height)
     return false;
 
-  // Invalid formats
-  if (pTexture->format == vcTextureFormat_Unknown || pTexture->format == vcTextureFormat_Cubemap || pTexture->format == vcTextureFormat_Count)
-    return false;
-  
-  // Invalid operation
-  if (pTexture->pStagingTextureD3D[pTexture->stagingIndex] == nullptr)
+  if (pTexture->format == vcTextureFormat_Unknown || pTexture->format == vcTextureFormat_Cubemap || pTexture->format == vcTextureFormat_Count || pTexture->pStagingTextureD3D[pTexture->stagingIndex] == nullptr)
     return false;
 
   udResult result = udR_Success;

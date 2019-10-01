@@ -851,7 +851,7 @@ udResult vcRender_AsyncReadFrameDepth(vcRenderContext *pRenderContext)
   pickLocation.y = pRenderContext->sceneResolution.y - pickLocation.y - 1; // upside-down
 #endif
 
-  UD_ERROR_IF(!vcTexture_EndReadPixels(pRenderContext->pDepthTexture, pickLocation.x, pickLocation.y, 1, 1, depthBytes, pRenderContext->pFramebuffer), udR_InternalError); // read previous copy
+  UD_ERROR_IF(!vcTexture_EndReadPixels(pRenderContext->pDepthTexture, pickLocation.x, pickLocation.y, 1, 1, depthBytes), udR_InternalError); // read previous copy
   UD_ERROR_IF(!vcTexture_BeginReadPixels(pRenderContext->pDepthTexture, pickLocation.x, pickLocation.y, 1, 1, depthBytes, pRenderContext->pFramebuffer), udR_InternalError); // begin copy for next frame read
 
   // 24 bit unsigned int -> float
@@ -1226,7 +1226,7 @@ vcRenderPickResult vcRender_PolygonPick(vcState *pProgramState, vcRenderContext 
       }
     }
 
-    udInt2 readPosition = { pRenderContext->picking.location.x, pRenderContext->picking.location.y };
+    udUInt2 readLocation = { pRenderContext->picking.location.x, pRenderContext->picking.location.y };
     uint8_t colourBytes[4] = {};
     uint8_t depthBytes[4] = {};
 
@@ -1235,8 +1235,8 @@ vcRenderPickResult vcRender_PolygonPick(vcState *pProgramState, vcRenderContext 
     // read upside down
     sampleLocation.y = pRenderContext->effectResolution.y - pRenderContext->picking.location.y - 1;
 #endif
-    vcTexture_BeginReadPixels(pRenderContext->picking.pTexture, readPosition.x, readPosition.y, 1, 1, colourBytes, pRenderContext->picking.pFramebuffer);
-    vcTexture_BeginReadPixels(pRenderContext->picking.pDepth, readPosition.x, readPosition.y, 1, 1, depthBytes, pRenderContext->picking.pFramebuffer);
+    vcTexture_BeginReadPixels(pRenderContext->picking.pTexture, readLocation.x, readLocation.y, 1, 1, colourBytes, pRenderContext->picking.pFramebuffer);
+    vcTexture_BeginReadPixels(pRenderContext->picking.pDepth, readLocation.x, readLocation.y, 1, 1, depthBytes, pRenderContext->picking.pFramebuffer);
 
     vcGLState_SetViewport(0, 0, pRenderContext->sceneResolution.x, pRenderContext->sceneResolution.y);
 
