@@ -1,10 +1,16 @@
 #include "gl/vcFramebuffer.h"
 #include "vcOpenGL.h"
 
-bool vcFramebuffer_Create(vcFramebuffer **ppFramebuffer, vcTexture *pTexture, vcTexture *pDepth /*= nullptr*/, int level /*= 0*/)
+bool vcFramebuffer_Create(vcFramebuffer **ppFramebuffer, vcTexture *pTexture, vcTexture *pDepth /*= nullptr*/, uint32_t level /*= 0*/)
 {
+  if (ppFramebuffer == nullptr || pTexture == nullptr)
+    return false;
+
+  udResult result = udR_Success;
+  static const GLenum DrawBuffers[] = { GL_COLOR_ATTACHMENT0 };
+
   vcFramebuffer *pFramebuffer = udAllocType(vcFramebuffer, 1, udAF_Zero);
-  GLenum DrawBuffers[] = { GL_COLOR_ATTACHMENT0 };
+  UD_ERROR_NULL(pFramebuffer, udR_MemoryAllocationFailure);
 
   glGenFramebuffers(1, &pFramebuffer->id);
   glBindFramebuffer(GL_DRAW_FRAMEBUFFER, pFramebuffer->id);
@@ -27,8 +33,14 @@ bool vcFramebuffer_Create(vcFramebuffer **ppFramebuffer, vcTexture *pTexture, vc
   pFramebuffer->pDepth = pDepth;
 
   *ppFramebuffer = pFramebuffer;
+  pFramebuffer = nullptr;
+
+epilogue:
+  if (pFramebuffer != nullptr)
+    vcFramebuffer_Destroy(&pFramebuffer);
+
   VERIFY_GL();
-  return true;
+  return result == udR_Success;
 }
 
 void vcFramebuffer_Destroy(vcFramebuffer **ppFramebuffer)
@@ -55,6 +67,9 @@ bool vcFramebuffer_Bind(vcFramebuffer *pFramebuffer)
 
 bool vcFramebuffer_Clear(vcFramebuffer *pFramebuffer, uint32_t colour)
 {
+  if (pFramebuffer == nullptr)
+    return false;
+
   GLbitfield clearMask = GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT;
   if (pFramebuffer->pDepth && pFramebuffer->pDepth->format == vcTextureFormat_D24S8)
     clearMask |= GL_STENCIL_BUFFER_BIT;
