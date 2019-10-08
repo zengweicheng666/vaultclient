@@ -121,6 +121,8 @@ struct vcRenderContext
   vcTexture *pWhiteTexture;
 
   float previousFrameDepth;
+  udDouble4x4 previousInverseViewProjection;
+  udFloat2 previousMouseUV[2]; // [0] == 1 frame behind, [1] == 2 frames behind
   udFloat2 currentMouseUV;
 
   struct
@@ -149,8 +151,6 @@ struct vcRenderContext
 
   struct
   {
-    udUInt2 location;
-
     vcFramebuffer *pFramebuffer;
     vcTexture *pTexture;
     vcTexture *pDepth;
@@ -454,7 +454,7 @@ epilogue:
 }
 
 // Asychronously read a 1x1 region of last frames depth buffer 
-udResult vcRender_AsyncReadFrameDepth(vcRenderContext *pRenderContext)
+udResult vcRender_AsyncReadPreviousFrameDepth(vcRenderContext *pRenderContext)
 {
   udResult result = udR_Success;
 
@@ -484,6 +484,9 @@ udResult vcRender_AsyncReadFrameDepth(vcRenderContext *pRenderContext)
   // fbo state may not be valid (e.g. first read back will be '0')
   if (pRenderContext->previousFrameDepth == 0.0f)
     pRenderContext->previousFrameDepth = 1.0f;
+
+  pRenderContext->previousMouseUV[1] = pRenderContext->previousMouseUV[0];
+  pRenderContext->previousMouseUV[0] = pRenderContext->currentMouseUV;
 
 epilogue:
   return result;
@@ -746,8 +749,6 @@ void vcRender_OpaquePass(vcState *pProgramState, vcRenderContext *pRenderContext
     for (size_t i = 0; i < renderData.waterVolumes.length; ++i)
       vcWaterRenderer_Render(renderData.waterVolumes[i], pProgramState->pCamera->matrices.view, pProgramState->pCamera->matrices.viewProjection, pRenderContext->skyboxShaderPanorama.pSkyboxTexture, pProgramState->deltaTime);
   }
-
-  vcRender_AsyncReadFrameDepth(pRenderContext); // note: one frame behind
 }
 
 void vcRenderTransparentGeometry(vcState *pProgramState, vcRenderContext *pRenderContext, vcRenderData &renderData)
@@ -933,6 +934,10 @@ void vcRender_RenderScene(vcState *pProgramState, vcRenderContext *pRenderContex
   vcGLState_SetViewport(0, 0, pRenderContext->sceneResolution.x, pRenderContext->sceneResolution.y);
 
   vcRender_OpaquePass(pProgramState, pRenderContext, renderData); // first pass
+
+  pRenderContext->previousInverseViewProjection = pProgramState->pCamera->matrices.inverseViewProjection;
+  vcRender_AsyncReadPreviousFrameDepth(pRenderContext); // note: one frame behind
+
   vcRender_VisualizationPass(pProgramState, pRenderContext); // final pass
 
   vcFramebuffer_Bind(pRenderContext->pFramebuffer[1]);
@@ -1225,11 +1230,13 @@ vcRenderPickResult vcRender_PolygonPick(vcState *pProgramState, vcRenderContext 
   if (pRenderContext->currentMouseUV.x < 0 || pRenderContext->currentMouseUV.x > 1 || pRenderContext->currentMouseUV.y < 0 || pRenderContext->currentMouseUV.y > 1)
     return result;
 
-  pRenderContext->picking.location.x = (uint32_t)(pRenderContext->currentMouseUV.x * pRenderContext->effectResolution.x);
-  pRenderContext->picking.location.y = (uint32_t)(pRenderContext->currentMouseUV.y * pRenderContext->effectResolution.y);
+  udUInt2 pickLocation = udUInt2::create((uint32_t)(pRenderContext->currentMouseUV.x * pRenderContext->effectResolution.x),
+                                         (uint32_t)(pRenderContext->currentMouseUV.y * pRenderContext->effectResolution.y));
 
   double currentDist = pProgramState->settings.camera.farPlane;
   float pickDepth = 1.0f;
+  udDouble4x4 inverseViewProjection = pProgramState->pCamera->matrices.inverseViewProjection;
+  udFloat2 mouseUV = pRenderContext->currentMouseUV;
 
   if (doSelectRender && (renderData.models.length > 0 || renderData.polyModels.length > 0))
   {
@@ -1242,7 +1249,7 @@ vcRenderPickResult vcRender_PolygonPick(vcState *pProgramState, vcRenderContext 
     vcFramebuffer_Clear(pRenderContext->picking.pFramebuffer, 0x0);
 
     vcGLState_SetViewport(0, 0, pRenderContext->effectResolution.x, pRenderContext->effectResolution.y);
-    vcGLState_Scissor(pRenderContext->picking.location.x, pRenderContext->picking.location.y, pRenderContext->picking.location.x + 1, pRenderContext->picking.location.y + 1);
+    vcGLState_Scissor(pickLocation.x, pickLocation.y, pickLocation.x + 1, pickLocation.y + 1);
 
     {
       uint32_t modelId = 1; // note: start at 1, because 0 is 'null'
@@ -1265,13 +1272,13 @@ vcRenderPickResult vcRender_PolygonPick(vcState *pProgramState, vcRenderContext 
       }
     }
 
-    udUInt2 readLocation = { pRenderContext->picking.location.x, pRenderContext->picking.location.y };
+    udUInt2 readLocation = udUInt2::create(pickLocation.x, pickLocation.y);
     uint8_t colourBytes[4] = {};
     uint8_t depthBytes[4] = {};
 
 #if GRAPHICS_API_OPENGL
     // read upside down
-    readLocation.y = pRenderContext->effectResolution.y - pRenderContext->picking.location.y - 1;
+    readLocation.y = pRenderContext->effectResolution.y - pickLocation.y - 1;
 #endif
 
     // Synchronously read back data
@@ -1312,16 +1319,18 @@ vcRenderPickResult vcRender_PolygonPick(vcState *pProgramState, vcRenderContext 
   {
     result.success = true;
     pickDepth = pRenderContext->previousFrameDepth;
+    inverseViewProjection = pRenderContext->previousInverseViewProjection;
+    mouseUV = pRenderContext->previousMouseUV[1];
   }
 
   if (result.success)
   {
     // note: upside down (1.0 - uv.y)
-    udDouble4 clipPos = udDouble4::create(pRenderContext->currentMouseUV.x * 2.0 - 1.0, (1.0 - pRenderContext->currentMouseUV.y) * 2.0 - 1.0, pickDepth, 1.0);
+    udDouble4 clipPos = udDouble4::create(mouseUV.x * 2.0 - 1.0, (1.0 - mouseUV.y) * 2.0 - 1.0, pickDepth, 1.0);
 #if GRAPHICS_API_OPENGL
     clipPos.z = clipPos.z * 2.0 - 1.0;
 #endif
-    udDouble4 pickPosition = pProgramState->pCamera->matrices.inverseViewProjection * clipPos;
+    udDouble4 pickPosition = inverseViewProjection * clipPos;
     pickPosition = pickPosition / pickPosition.w;
     result.position = pickPosition.toVector3();
 
@@ -1331,10 +1340,10 @@ vcRenderPickResult vcRender_PolygonPick(vcState *pProgramState, vcRenderContext 
   if (pProgramState->settings.maptiles.mapEnabled && pProgramState->settings.maptiles.mouseInteracts)// check map tiles
   {
     udPlane<double> mapPlane = udPlane<double>::create({ 0, 0, pProgramState->settings.maptiles.mapHeight }, { 0, 0, 1 });
-
+  
     double hitDistance;
     udDouble3 hitPoint;
-
+  
     if (mapPlane.intersects(pProgramState->pCamera->worldMouseRay, &hitPoint, &hitDistance))
     {
       if (hitDistance < currentDist)
