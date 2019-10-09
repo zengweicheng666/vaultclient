@@ -48,6 +48,10 @@ private:
   vcLabelInfo *m_pLabelInfo;
   const char *m_pLabelText;
 
+  int m_nextPoint;
+  double m_distPerSecond;
+  bool m_rotateFriend;
+
 public:
   vcPOI(vdkProject *pProject, vdkProjectNode *pNode, vcState *pProgramState);
   ~vcPOI() {};
@@ -69,6 +73,11 @@ public:
 
   void SelectSubitem(uint64_t internalId);
   bool IsSubitemSelected(uint64_t internalId);
+
+  void MoveFriend(vcState *pProgramState);
+  void WarpFriend(vcState *pProgramState);
+
+  vcSceneItem *m_pFriend;
 };
 
 #endif //vcPOI_h__

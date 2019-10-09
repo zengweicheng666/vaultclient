@@ -250,6 +250,10 @@ void vcModel::ApplyDelta(vcState *pProgramState, const udDouble4x4 &delta)
     vdkProjectNode_SetMetadataDouble(m_pNode, "transform.rotation.r", eulerRotation.z);
     vdkProjectNode_SetMetadataDouble(m_pNode, "transform.scale", scale.x);
   }
+
+
+  if (m_cameraFriend) // TODO: Will this cut corners and stuff?
+    pProgramState->cameraInput.smoothTranslation += delta.axis.t.toVector3();
 }
 
 void vcModel::HandleImGui(vcState *pProgramState, size_t * /*pItemID*/)

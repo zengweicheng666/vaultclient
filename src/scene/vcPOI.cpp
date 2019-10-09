@@ -56,6 +56,11 @@ vcPOI::vcPOI(vdkProject *pProject, vdkProjectNode *pNode, vcState *pProgramState
   m_pFence = nullptr;
   m_pLabelInfo = udAllocType(vcLabelInfo, 1, udAF_Zero);
 
+  m_pFriend = nullptr;
+  m_nextPoint = 0;
+  m_distPerSecond = 10.0;
+  m_rotateFriend = false;
+
   OnNodeUpdate(pProgramState);
 
   m_loadStatus = vcSLS_Loaded;
@@ -269,6 +274,13 @@ void vcPOI::UpdatePoints()
 
 void vcPOI::HandleImGui(vcState *pProgramState, size_t *pItemID)
 {
+  if (m_pFriend != nullptr)
+  {
+    m_pFriend->m_cameraFriend = true;
+    m_rotateFriend = true;
+    MoveFriend(pProgramState);
+  }
+
   if (vcIGSW_ColorPickerU32(udTempStr("%s##POIColour%zu", vcString::Get("scenePOILabelColour"), *pItemID), &m_nameColour, ImGuiColorEditFlags_None))
   {
     m_pLabelInfo->textColourRGBA = vcIGSW_BGRAToRGBAUInt32(m_nameColour);
@@ -486,4 +498,52 @@ void vcPOI::SelectSubitem(uint64_t internalId)
 bool vcPOI::IsSubitemSelected(uint64_t internalId)
 {
   return (m_selected && (m_line.selectedPoint == ((int)internalId - 1) || m_line.selectedPoint == -1));
+}
+
+void vcPOI::MoveFriend(vcState *pProgramState)
+{
+  udDouble3 currPos = m_pFriend->GetWorldSpacePivot();
+
+  double dist = pProgramState->deltaTime * m_distPerSecond;
+  udDouble3 totalMoveVector = udDouble3::zero();
+
+  while (dist > 0)
+  {
+    udDouble3 currMoveVector = m_line.pPoints[m_nextPoint] - currPos;
+    currPos = m_line.pPoints[m_nextPoint];
+
+    double pointDist = udMag3(currMoveVector);
+    if (pointDist > dist)
+    {
+      currMoveVector *= (dist / pointDist);
+      dist = 0;
+    }
+    else
+    {
+      dist -= pointDist;
+      ++m_nextPoint;
+
+      if (m_line.closed)
+        m_nextPoint %= m_line.numPoints;
+    }
+
+    totalMoveVector += currMoveVector;
+  }
+  
+  udDouble4x4 delta = udDouble4x4::translation(totalMoveVector);
+
+  //if (m_rotateFriend)
+  //  delta = udDouble4x4::lookAt(m_line.pPoints[m_nextPoint - 1], currPos) * delta;
+
+  m_pFriend->ApplyDelta(pProgramState, delta);
+}
+
+void vcPOI::WarpFriend(vcState *pProgramState)
+{
+  if (m_pFriend != nullptr)
+  {
+    udDouble3 currPos = m_pFriend->GetWorldSpacePivot();
+    currPos = m_line.pPoints[0] - currPos;
+    m_pFriend->ApplyDelta(pProgramState, udDouble4x4::translation(currPos));
+  }
 }

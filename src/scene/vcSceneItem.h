@@ -45,6 +45,8 @@ public:
   udJSON m_metadata; // This points to a metadata (may be an empty object)
   udGeoZone *m_pPreferredProjection; // nullptr if there is no preferred zone
 
+  bool m_cameraFriend;
+
   vcSceneItem(vdkProject *pProject, vdkProjectNode *pNode, vcState *pProgramState);
   vcSceneItem(vcState *pProgramState, const char *pType, const char *pName);
   virtual ~vcSceneItem();

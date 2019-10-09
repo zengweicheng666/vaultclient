@@ -2353,12 +2353,19 @@ void vcRenderWindow(vcState *pProgramState)
                 const vcSceneItemRef &item = pProgramState->sceneExplorer.selectedItems[i];
                 vdkProjectNode* pNode = item.pItem;
 
-                vdkProjectNode_MoveChild(pProgramState->activeProject.pProject, item.pParent, pProgramState->sceneExplorer.insertItem.pParent, pNode, pProgramState->sceneExplorer.insertItem.pItem);
+                if (pProgramState->sceneExplorer.insertItem.pItem->itemtype == vdkPNT_PointOfInterest)
+                {
+                  ((vcPOI *)pProgramState->sceneExplorer.insertItem.pItem->pUserData)->m_pFriend = (vcSceneItem *)item.pItem->pUserData;
+                  ((vcPOI *)pProgramState->sceneExplorer.insertItem.pItem->pUserData)->WarpFriend(pProgramState);
+                }
+                else
+                {
+                  vdkProjectNode_MoveChild(pProgramState->activeProject.pProject, item.pParent, pProgramState->sceneExplorer.insertItem.pParent, pNode, pProgramState->sceneExplorer.insertItem.pItem);
 
-                // Update the selected item information to repeat drag and drop
-                pProgramState->sceneExplorer.selectedItems[i].pParent = pProgramState->sceneExplorer.insertItem.pParent;
-
-                pProgramState->sceneExplorer.clickedItem = pProgramState->sceneExplorer.selectedItems[i];
+                  // Update the selected item information to repeat drag and drop
+                  pProgramState->sceneExplorer.selectedItems[i].pParent = pProgramState->sceneExplorer.insertItem.pParent;
+                  pProgramState->sceneExplorer.clickedItem = pProgramState->sceneExplorer.selectedItems[i];
+                }
               }
             }
             pProgramState->sceneExplorer.insertItem = { nullptr, nullptr };
