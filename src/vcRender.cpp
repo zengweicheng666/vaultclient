@@ -121,7 +121,7 @@ struct vcRenderContext
   vcTexture *pWhiteTexture;
 
   float previousFrameDepth;
-  udDouble4x4 previousInverseViewProjection;
+  udDouble4x4 previousInverseViewProjection[2]; // [0] == 1 frame behind, [1] == 2 frames behind
   udFloat2 previousMouseUV[2]; // [0] == 1 frame behind, [1] == 2 frames behind
   udFloat2 currentMouseUV;
 
@@ -454,7 +454,7 @@ epilogue:
 }
 
 // Asychronously read a 1x1 region of last frames depth buffer 
-udResult vcRender_AsyncReadPreviousFrameDepth(vcRenderContext *pRenderContext)
+udResult vcRender_AsyncReadPreviousFrameDepth(vcState *pProgramState, vcRenderContext *pRenderContext)
 {
   udResult result = udR_Success;
 
@@ -466,6 +466,8 @@ udResult vcRender_AsyncReadPreviousFrameDepth(vcRenderContext *pRenderContext)
 #if GRAPHICS_API_OPENGL
   pickLocation.y = pRenderContext->sceneResolution.y - pickLocation.y - 1; // upside-down
 #endif
+
+  uint64_t start = udPerfCounterStart();
 
   static const int readBufferIndex = 0;
   UD_ERROR_IF(!vcTexture_EndReadPixels(pRenderContext->pDepthTexture[readBufferIndex], pickLocation.x, pickLocation.y, 1, 1, depthBytes), udR_InternalError); // read previous copy
@@ -487,6 +489,12 @@ udResult vcRender_AsyncReadPreviousFrameDepth(vcRenderContext *pRenderContext)
 
   pRenderContext->previousMouseUV[1] = pRenderContext->previousMouseUV[0];
   pRenderContext->previousMouseUV[0] = pRenderContext->currentMouseUV;
+
+  pRenderContext->previousInverseViewProjection[1] = pRenderContext->previousInverseViewProjection[0];
+  pRenderContext->previousInverseViewProjection[0] = pProgramState->pCamera->matrices.inverseViewProjection;
+
+  float ms = udPerfCounterMilliseconds(start);
+  printf("%f\n", ms);
 
 epilogue:
   return result;
@@ -935,8 +943,7 @@ void vcRender_RenderScene(vcState *pProgramState, vcRenderContext *pRenderContex
 
   vcRender_OpaquePass(pProgramState, pRenderContext, renderData); // first pass
 
-  pRenderContext->previousInverseViewProjection = pProgramState->pCamera->matrices.inverseViewProjection;
-  vcRender_AsyncReadPreviousFrameDepth(pRenderContext); // note: one frame behind
+  vcRender_AsyncReadPreviousFrameDepth(pProgramState, pRenderContext); // note: one frame behind
 
   vcRender_VisualizationPass(pProgramState, pRenderContext); // final pass
 
@@ -1319,8 +1326,19 @@ vcRenderPickResult vcRender_PolygonPick(vcState *pProgramState, vcRenderContext 
   {
     result.success = true;
     pickDepth = pRenderContext->previousFrameDepth;
-    inverseViewProjection = pRenderContext->previousInverseViewProjection;
+    inverseViewProjection = pRenderContext->previousInverseViewProjection[1];
     mouseUV = pRenderContext->previousMouseUV[1];
+
+    for opengl these have to be 2 frame ago's
+   // inverseViewProjection = pRenderContext->previousInverseViewProjection[1];
+    //mouseUV = pRenderContext->previousMouseUV[1];
+
+
+    for opengl these have to be 1 frame ago's
+    // inverseViewProjection = pRenderContext->previousInverseViewProjection[0];
+    //mouseUV = pRenderContext->previousMouseUV[0];
+
+    NO IDEA WHY, RAN OUT OF TIME
   }
 
   if (result.success)
@@ -1346,7 +1364,7 @@ vcRenderPickResult vcRender_PolygonPick(vcState *pProgramState, vcRenderContext 
   
     if (mapPlane.intersects(pProgramState->pCamera->worldMouseRay, &hitPoint, &hitDistance))
     {
-      if (hitDistance < currentDist)
+      if (hitDistance < currentDist - pProgramState->settings.camera.nearPlane)
       {
         result.success = true;
         result.position = hitPoint;
