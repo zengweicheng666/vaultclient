@@ -2,14 +2,50 @@
 #define vcDXF_Internal_h__
 
 #include "udChunkedArray.h"
+#include "udGeoZone.h"
 
 #include <unordered_map>
 #include <string>
 
 #define TYPEMAPLEN 39 // udLengthOf not working for multidimensional arrays?
 
+enum vcDXF_EntityType
+{
+  vcDXFET_Vertex,
+  vcDXFET_Polyline,
+  vcDXFET_Count
+};
+
+const char *pDXFEntities[] =
+{
+  "VERTEX",
+  "POLYLINE"
+};
+
+struct vcDXF_Entity
+{
+  vcDXF_EntityType type;
+  const char *pHandle;
+  const char *pName;
+  uint32_t flags;
+  double elevation;
+
+  union
+  {
+    udChunkedArray<vcDXF_Entity> children;
+    udDouble3 point;
+  };
+};
+
 struct vcDXF
 {
+  char *pFileName;
+
+  struct
+  {
+    udGeoZone sourceZone;
+  } geodata;
+
   struct
   {
     udDouble3 minBounds;
@@ -49,12 +85,11 @@ struct vcDXF
     // double angleBase;
     // bool clockwiseAngles;
 
-    int16_t pointDisplayMode;
+    // int16_t pointDisplayMode; No idea what this option correlates to in other software so there'll be no consistency until I check
     double pointDisplaySize;
 
     double polylineWidth;
 
-    // int16_t splineCurveType
     char *pNextHandle;
 
     char *pUserCoordSysName;
@@ -66,7 +101,7 @@ struct vcDXF
     // int16_t unitMode; // Low bit set = Display fractions, feet-and-inches, and surveyor's angles in input format
   } header;
 
-  udChunkedArray<udDouble3>
+  udChunkedArray<vcDXF_Entity> entities;
 };
 
 enum vcDXF_Type
@@ -74,6 +109,7 @@ enum vcDXF_Type
   vcDXFT_BigString,
   vcDXFT_HexString,
   vcDXFT_String,
+  vcDXFT_Comment,
   vcDXFT_Double,
   vcDXFT_Int16,
   vcDXFT_Int32,
@@ -85,8 +121,7 @@ enum vcDXF_Type
 static const int typeMap[][3] =
 { // Ordered list of type mappings corresponding to the group code value table layout
   {(int)vcDXFT_BigString, 0, 9},
-  {(int)vcDXFT_Double, 10, 39},
-  {(int)vcDXFT_Double, 40, 59},
+  {(int)vcDXFT_Double, 10, 59},
   {(int)vcDXFT_Int16, 60, 79},
   {(int)vcDXFT_Int32, 90, 99},
   {(int)vcDXFT_String, 100, 100},
@@ -118,7 +153,7 @@ static const int typeMap[][3] =
   {(int)vcDXFT_Double, 460, 469},
   {(int)vcDXFT_String, 470, 479},
   {(int)vcDXFT_HexString, 480, 481},
-  {(int)vcDXFT_String, 999, 999},
+  {(int)vcDXFT_Comment, 999, 999},
   {(int)vcDXFT_BigString, 1000, 1009},
   {(int)vcDXFT_Double, 1010, 1059},
   {(int)vcDXFT_Int16, 1060, 1070},
@@ -133,7 +168,6 @@ static std::unordered_map<std::string, int> headerCommandEndpoints =
   { "$TEXTSIZE", offsetof(struct vcDXF, header.textSize) },
   { "$TDCREATE", offsetof(struct vcDXF, header.creationTime) },
   { "$TDUPDATE", offsetof(struct vcDXF, header.updateTime) },
-  { "$PDMODE", offsetof(struct vcDXF, header.pointDisplayMode) },
   { "$PDSIZE", offsetof(struct vcDXF, header.pointDisplaySize) },
   { "$PLINEWID", offsetof(struct vcDXF, header.polylineWidth) },
   { "$HANDSEED", offsetof(struct vcDXF, header.pNextHandle) },
@@ -141,6 +175,24 @@ static std::unordered_map<std::string, int> headerCommandEndpoints =
   { "$UCSORG", offsetof(struct vcDXF, header.userCoordOrigin) },
   { "$UCSXDIR", offsetof(struct vcDXF, header.userCoordXDir) },
   { "$UCSYDIR", offsetof(struct vcDXF, header.userCoordYDir) }
+};
+
+static const int vcDXF_VertexCodes[][2] =
+{
+  { 5, offsetof(struct vcDXF_Entity, pHandle) },
+  { 8, offsetof(struct vcDXF_Entity, pName) },
+  { 10, offsetof(struct vcDXF_Entity, point) },
+  { 20, offsetof(struct vcDXF_Entity, point) + sizeof(double) },
+  { 30, offsetof(struct vcDXF_Entity, point) + sizeof(double) * 2 },
+  { 70, offsetof(struct vcDXF_Entity, flags) },
+};
+
+static const int vcDXF_PolylineCodes[][2] =
+{
+  { 5, offsetof(struct vcDXF_Entity, pHandle) },
+  { 8, offsetof(struct vcDXF_Entity, pName) },
+  { 30, offsetof(struct vcDXF_Entity, elevation) },
+  { 70, offsetof(struct vcDXF_Entity, flags) },
 };
 
 static const char *pSections[] =
