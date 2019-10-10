@@ -462,11 +462,13 @@ void vcMain_MainLoop(vcState *pProgramState)
           }
           else if (udStrEquali(pExt, ".DXF"))
           {
-            udGeoZone sourceZone = {};
-            udGeoZone_SetFromWKT(&sourceZone, "PROJCS[\"MGI - AT.AUT - East / GK\",GEOGCS[\"GCS_MGI\",DATUM[\"D_MGI\",SPHEROID[\"Bessel_1841\",6377397.155,299.15281535],TOWGS84[577.3260,90.1290,463.9190,5.137000,1.474000,5.297000,2.42320000]],PRIMEM[\"Greenwich\",0],UNIT[\"Degree\",0.017453292519943295]],PROJECTION[\"Transverse_Mercator\"],PARAMETER[\"False_Easting\",0.000],PARAMETER[\"False_Northing\",-5000000.000],PARAMETER[\"Scale_Factor\",1.000000000000],PARAMETER[\"Central_Meridian\",16.33333333333333],PARAMETER[\"Latitude_Of_Origin\",0.00000000000000],UNIT[\"Meter\",1.00000000000000]]");
+            // Testing configuration for the OEBB datasets
+            // udGeoZone sourceZone = {};
+            // udGeoZone_SetFromSRID(&sourceZone, 31257);
             vcDXF *pDXF = nullptr;
             vcDXF_Load(&pDXF, pNextLoad);
-            vcDXF_AddToProject(pDXF, pProgramState->activeProject.pProject, &sourceZone);
+            vcDXF_AddToProject(pDXF, pProgramState->activeProject.pProject/*, &sourceZone*/);
+            vcDXF_Destroy(&pDXF);
           }
           else // This file isn't supported in the scene
           {
