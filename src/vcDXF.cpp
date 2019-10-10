@@ -38,6 +38,33 @@ inline vcDXF_Sections vcDXF_GetSection(const char *pSection)
   return (vcDXF_Sections)i;
 }
 
+udResult vcDXF_DestroyEntity(vcDXF_Entity *pEntity)
+{
+  if (pEntity == nullptr)
+    return udR_Success;
+
+  udResult result;
+
+  while (pEntity->children.length > 0)
+  {
+    vcDXF_Entity *pCurr = nullptr;
+    UD_ERROR_CHECK(vcDXF_DestroyEntity(pEntity->children.GetElement(0)));
+    pEntity->children.PopFront(pCurr);
+    udFree(pCurr);
+  }
+
+  UD_ERROR_CHECK(pEntity->children.Deinit());
+
+  udFree(pEntity->pName);
+  udFree(pEntity->pHandle);
+
+  result = udR_Success;
+
+epilogue:
+
+  return result;
+}
+
 udResult vcDXF_Create(vcDXF **ppDXF)
 {
   if (ppDXF == nullptr)
@@ -67,11 +94,23 @@ epilogue:
 
 udResult vcDXF_Destroy(vcDXF **ppDXF)
 {
+  if (ppDXF == nullptr || *ppDXF == nullptr)
+    return udR_Success;
+
   udResult result;
 
-  UD_ERROR_IF(ppDXF == nullptr || *ppDXF == nullptr, udR_Success);
+  while ((*ppDXF)->entities.length > 0)
+  {
+    vcDXF_Entity *pEntity = nullptr;
+    UD_ERROR_CHECK(vcDXF_DestroyEntity((*ppDXF)->entities.GetElement(0)));
+    (*ppDXF)->entities.PopFront(pEntity);
+    udFree(pEntity);
+  }
 
-  // TODO: Clean entities
+  udFree((*ppDXF)->header.pNextHandle);
+  udFree((*ppDXF)->header.pUserCoordSysName);
+  udFree((*ppDXF)->pFileName);
+
   UD_ERROR_CHECK((*ppDXF)->entities.Deinit());
 
   result = udR_Success;
@@ -91,7 +130,7 @@ vcDXF_Entity *vcDXF_GetNewParentEntity(vcDXF_Entity *pParent)
   case vcDXFET_Polyline:
     return pParent->children.PushBack();
   case vcDXFET_Vertex: // Falls through
-  case vcDXFET_Count: 
+  case vcDXFET_None: 
     return nullptr;
   }
 
@@ -127,11 +166,39 @@ void *vcDXF_GetEndpoint(vcDXF_Entity *pCurrEntity, int groupCode)
       return nullptr;
 
     return (uint8_t *)pCurrEntity + vcDXF_VertexCodes[i][1];
+  }
+  
+  return nullptr;
+}
 
+inline bool vcDXF_ValidChild(vcDXF_EntityType parent, vcDXF_EntityType child)
+{
+  return DXFValidChildren[parent] & child ? true : false;
+}
+
+udResult vcDXF_InitialiseEntity(vcDXF_Entity *pEntity)
+{
+  if (pEntity == nullptr)
+    return udR_InvalidParameter_;
+
+  udResult result;
+
+  switch (pEntity->type)
+  {
+  case vcDXFET_None: // Falls through
+  case vcDXFET_Vertex:
+    break;
+
+  case vcDXFET_Polyline:
+    UD_ERROR_CHECK(pEntity->children.Init(32));
+    break;
   }
 
+  result = udR_Success;
 
-  return nullptr;
+epilogue:
+
+  return result;
 }
 
 udResult vcDXF_Load(vcDXF **ppDXF, const char *pFilename)
@@ -245,17 +312,20 @@ udResult vcDXF_Load(vcDXF **ppDXF, const char *pFilename)
           else
           {
             int j = 0;
-            for (; j < vcDXFET_Count; ++j)
+            for (; j < udLengthOf(pDXFEntities); ++j)
             {
               if (udStrEquali(commandBuffer, pDXFEntities[j]))
                 break;
             }
 
-            if (j == vcDXFET_Count)
+            if (j == udLengthOf(pDXFEntities))
             {
               actioned = false;
               break;
             }
+
+            if (pCurrEntity != nullptr && vcDXF_ValidChild(pCurrEntity->type, (vcDXF_EntityType)j))
+              pParentEntity = pCurrEntity;
 
             if (pParentEntity != nullptr)
               pCurrEntity = (vcDXF_Entity *)vcDXF_GetNewParentEntity(pParentEntity);
@@ -263,13 +333,17 @@ udResult vcDXF_Load(vcDXF **ppDXF, const char *pFilename)
               pCurrEntity = pDXF->entities.PushBack();
 
             pCurrEntity->type = (vcDXF_EntityType)j;
-
+            UD_ERROR_CHECK(vcDXF_InitialiseEntity(pCurrEntity));
           }
           break;
 
         default:
           break;
         }
+      }
+      else
+      {
+        actioned = false;
       }
 
       if (!actioned)
@@ -290,7 +364,7 @@ udResult vcDXF_Load(vcDXF **ppDXF, const char *pFilename)
           case vcDXFT_BigString: // Falls through
           case vcDXFT_String: // String type should be duped into endpoint
             udStrchr(pPos, " \n\r\t", &skipCharsT);
-            *(char **)pCurrEndpoint = udStrndup(pPos, skipCharsT); // TODO: This work?
+            *(char **)pCurrEndpoint = udStrndup(pPos, skipCharsT);
             skipChars = (int)skipCharsT;
             break;
 
@@ -344,6 +418,8 @@ udResult vcDXF_Load(vcDXF **ppDXF, const char *pFilename)
   result = udR_Success;
 
 epilogue:
+
+  udFree(pFile);
 
   if (result != udR_Success)
     vcDXF_Destroy(&pDXF);

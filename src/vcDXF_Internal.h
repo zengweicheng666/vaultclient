@@ -11,15 +11,23 @@
 
 enum vcDXF_EntityType
 {
-  vcDXFET_Vertex,
-  vcDXFET_Polyline,
-  vcDXFET_Count
+  vcDXFET_None = 0,
+  vcDXFET_Vertex = 1,
+  vcDXFET_Polyline = 2,
 };
 
 const char *pDXFEntities[] =
 {
+  "",
   "VERTEX",
   "POLYLINE"
+};
+
+static const int DXFValidChildren[] =
+{
+  vcDXFET_None,
+  vcDXFET_None,
+  vcDXFET_Vertex
 };
 
 struct vcDXF_Entity
@@ -29,12 +37,8 @@ struct vcDXF_Entity
   const char *pName;
   uint32_t flags;
   double elevation;
-
-  union
-  {
-    udChunkedArray<vcDXF_Entity> children;
-    udDouble3 point;
-  };
+  udChunkedArray<vcDXF_Entity> children;
+  udDouble3 point;
 };
 
 struct vcDXF
@@ -181,9 +185,9 @@ static const int vcDXF_VertexCodes[][2] =
 {
   { 5, offsetof(struct vcDXF_Entity, pHandle) },
   { 8, offsetof(struct vcDXF_Entity, pName) },
-  { 10, offsetof(struct vcDXF_Entity, point) },
-  { 20, offsetof(struct vcDXF_Entity, point) + sizeof(double) },
-  { 30, offsetof(struct vcDXF_Entity, point) + sizeof(double) * 2 },
+  { 10, offsetof(struct vcDXF_Entity, point.x) },
+  { 20, offsetof(struct vcDXF_Entity, point.y) },
+  { 30, offsetof(struct vcDXF_Entity, point.z) },
   { 70, offsetof(struct vcDXF_Entity, flags) },
 };
 
@@ -191,7 +195,9 @@ static const int vcDXF_PolylineCodes[][2] =
 {
   { 5, offsetof(struct vcDXF_Entity, pHandle) },
   { 8, offsetof(struct vcDXF_Entity, pName) },
-  { 30, offsetof(struct vcDXF_Entity, elevation) },
+  { 10, offsetof(struct vcDXF_Entity, point.x) },
+  { 20, offsetof(struct vcDXF_Entity, point.y) },
+  { 30, offsetof(struct vcDXF_Entity, point.z) },
   { 70, offsetof(struct vcDXF_Entity, flags) },
 };
 
