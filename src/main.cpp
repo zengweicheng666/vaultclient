@@ -44,6 +44,7 @@
 #include "vcPOI.h"
 #include "vcStringFormat.h"
 #include "vcInternalTexturesData.h"
+#include "vcKey.h"
 
 #include "gl/vcGLState.h"
 #include "gl/vcFramebuffer.h"
@@ -231,7 +232,7 @@ void vcMain_MainLoop(vcState *pProgramState)
   SDL_Event event;
   while (SDL_PollEvent(&event))
   {
-    if (!ImGui_ImplSDL2_ProcessEvent(&event))
+    if (!ImGui_ImplSDL2_ProcessEvent(&event, pProgramState))
     {
       if (event.type == SDL_WINDOWEVENT)
       {
@@ -903,6 +904,8 @@ int main(int argc, char **args)
 
   vcTexture_CreateFromMemory(&programState.pCompanyWatermark, (void *)logoData, logoDataSize);
 
+  vcKey::LoadTableFromFile("asset://assets/bindings/standard.json");
+
 #if UDPLATFORM_EMSCRIPTEN
   emscripten_set_main_loop_arg(vcMain_MainLoop, &programState, 0, 1);
 #else
@@ -945,6 +948,7 @@ epilogue:
   vcRender_Destroy(&programState, &programState.pRenderContext);
   vcTexture_Destroy(&programState.tileModal.pServerIcon);
   vcString::FreeTable(&programState.languageInfo);
+  vcKey::FreeTable();
   vcSession_Logout(&programState);
 
   vcProject_Deinit(&programState, &programState.activeProject);
@@ -1328,7 +1332,7 @@ void vcRenderSceneWindow(vcState *pProgramState)
     vcFramebuffer_Bind(pProgramState->pDefaultFramebuffer);
   }
 
-  if (!pProgramState->modalOpen && (ImGui::IsKeyPressed(SDL_SCANCODE_F5, false) || ImGui::IsNavInputPressed(ImGuiNavInput_TweakFast, ImGuiInputReadMode_Released)))
+  if (!pProgramState->modalOpen && (vcKey::Pressed("Fullscreen") || ImGui::IsNavInputPressed(ImGuiNavInput_TweakFast, ImGuiInputReadMode_Released)))
     vcMain_PresentationMode(pProgramState);
   if (pProgramState->settings.responsiveUI == vcPM_Show)
     pProgramState->showUI = true;
@@ -2243,9 +2247,13 @@ void vcRenderWindow(vcState *pProgramState)
 #endif
 
 #if !UDPLATFORM_LINUX
+  if (vcKey::Pressed("MapMode"))
   if (io.KeyCtrl && ImGui::IsKeyPressed(SDL_SCANCODE_M))
     vcCamera_SwapMapMode(pProgramState);
 #endif
+
+  if (vcKey::Pressed("BindingsInterface"))
+    vcModals_OpenModal(pProgramState, vcMT_Bindings);
 
   //end keyboard/mouse handling
 
@@ -2277,7 +2285,7 @@ void vcRenderWindow(vcState *pProgramState)
     {
       if (ImGui::Begin(udTempStr("%s###sceneExplorerDock", vcString::Get("sceneExplorerTitle")), &pProgramState->settings.window.windowsOpen[vcDocks_SceneExplorer]))
       {
-        if (vcMenuBarButton(pProgramState->pUITexture, vcString::Get("sceneExplorerAddUDS"), vcString::Get("sceneExplorerAddUDSKey"), vcMBBI_AddPointCloud, vcMBBG_FirstItem) || (ImGui::GetIO().KeyCtrl && ImGui::GetIO().KeysDown[SDL_SCANCODE_U]))
+        if (vcMenuBarButton(pProgramState->pUITexture, vcString::Get("sceneExplorerAddUDS"), vcString::Get("sceneExplorerAddUDSKey"), vcMBBI_AddPointCloud, vcMBBG_FirstItem) || vcKey::Pressed("AddUDS"))
           vcModals_OpenModal(pProgramState, vcMT_AddUDS);
 
         if (vcMenuBarButton(pProgramState->pUITexture, vcString::Get("sceneExplorerAddFolder"), nullptr, vcMBBI_AddFolder, vcMBBG_SameGroup))
@@ -2357,7 +2365,7 @@ void vcRenderWindow(vcState *pProgramState)
           ImGui::EndPopup();
         }
 
-        if (vcMenuBarButton(pProgramState->pUITexture, vcString::Get("sceneExplorerRemove"), vcString::Get("sceneExplorerRemoveKey"), vcMBBI_Remove, vcMBBG_NewGroup) || (ImGui::GetIO().KeysDown[SDL_SCANCODE_DELETE] && !ImGui::IsAnyItemActive()))
+        if (vcMenuBarButton(pProgramState->pUITexture, vcString::Get("sceneExplorerRemove"), vcString::Get("sceneExplorerRemoveKey"), vcMBBI_Remove, vcMBBG_NewGroup) || (vcKey::Pressed("Remove") && !ImGui::IsAnyItemActive()))
           vcProject_RemoveSelected(pProgramState);
 
         // Tree view for the scene

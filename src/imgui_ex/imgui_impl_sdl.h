@@ -19,10 +19,11 @@
 #pragma once
 
 struct SDL_Window;
+struct vcState;
 typedef union SDL_Event SDL_Event;
 
 IMGUI_IMPL_API SDL_Window* ImGui_ImplSDL2_CreateWindow(const char* title, int x, int y, int w, int h, ImU32 flags);
 IMGUI_IMPL_API bool     ImGui_ImplSDL2_InitForOpenGL(SDL_Window* window);
 IMGUI_IMPL_API void     ImGui_ImplSDL2_Shutdown();
 IMGUI_IMPL_API void     ImGui_ImplSDL2_NewFrame(SDL_Window* window);
-IMGUI_IMPL_API bool     ImGui_ImplSDL2_ProcessEvent(const SDL_Event* event);
+IMGUI_IMPL_API bool     ImGui_ImplSDL2_ProcessEvent(const SDL_Event* event, vcState *pProgramState);

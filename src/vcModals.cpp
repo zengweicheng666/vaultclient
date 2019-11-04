@@ -10,6 +10,7 @@
 #include "vcConvert.h"
 #include "vcProxyHelper.h"
 #include "vcStringFormat.h"
+#include "vcKey.h"
 
 #include "udFile.h"
 #include "udStringUtil.h"
@@ -821,6 +822,27 @@ void vcModals_DrawImageViewer(vcState *pProgramState)
   }
 }
 
+void vcModals_DrawBindings(vcState *pProgramState)
+{
+  if (pProgramState->openModals & (1 << vcMT_Bindings))
+    ImGui::OpenPopup(vcString::Get("bindingsModalTitle"));
+
+  // Use 75% of the window
+  int maxX, maxY;
+  SDL_GetWindowSize(pProgramState->pWindow, &maxX, &maxY);
+  ImGui::SetNextWindowSize(ImVec2(maxX * 0.75f, maxY * 0.75f));
+  if (ImGui::BeginPopupModal(vcString::Get("bindingsModalTitle"), nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_AlwaysAutoResize))
+  {
+    vcKey::DisplayBindings(pProgramState);
+
+    if (ImGui::Button(vcString::Get("bindingsModalClose")) || ImGui::GetIO().KeysDown[SDL_SCANCODE_ESCAPE])
+      ImGui::CloseCurrentPopup();
+
+    ImGui::EndPopup();
+  }
+}
+
+
 void vcModals_OpenModal(vcState *pProgramState, vcModalTypes type)
 {
   pProgramState->openModals |= (1 << type);
@@ -841,6 +863,7 @@ void vcModals_DrawModals(vcState *pProgramState)
   vcModals_DrawProjectReadOnly(pProgramState);
   vcModals_DrawImageViewer(pProgramState);
   vcModals_DrawUnsupportedFiles(pProgramState);
+  vcModals_DrawBindings(pProgramState);
 
   pProgramState->openModals &= ((1 << vcMT_NewVersionAvailable) | (1 << vcMT_LoggedOut) | (1 << vcMT_ProxyAuth));
 }
