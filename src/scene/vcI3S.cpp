@@ -16,6 +16,7 @@ vcI3S::vcI3S(vdkProject *pProject, vdkProjectNode *pNode, vcState *pProgramState
 {
   m_sceneMatrix = udDouble4x4::identity();
 
+  printf("La\n");
   udResult result = vcSceneLayerRenderer_Create(&m_pSceneRenderer, pProgramState->pWorkerPool, pNode->pURI);
 
   if (result == udR_OpenFailure)

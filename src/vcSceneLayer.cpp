@@ -282,17 +282,34 @@ void vcNormalizePath(const char **ppDest, const char *pRoot, const char *pAppend
   udFree(pNewAppend);
 }
 
-udResult udFile_LoadGZIP(const char *pFilename, void **ppMemory, int64_t *pFileLengthInBytes = nullptr)
+#include "udPlatform.h"
+#include "udPlatformUtil.h"
+
+udResult udFile_LoadGZIP(const vcSceneLayer *pSceneLayer, const char *pFilename, void **ppMemory, int64_t *pFileLengthInBytes = nullptr)
 {
+
+  static udMutex *pMutex = nullptr;
+  if (pMutex == nullptr)
+    pMutex = udCreateMutex();
+
+  udLockMutex(pMutex);
+
   udResult result;
   char *pBufferData = nullptr;
   int64_t rawFileLen = 0;
   char *pRawFileData = nullptr;
   size_t bufferLen = 0;
+  float loadTime = 0;
+  float inflateTime = 0;
 
-  UD_ERROR_CHECK(udFile_Load(pFilename, (void**)&pRawFileData, &rawFileLen));
+  uint64_t start = udPerfCounterStart();
+  //UD_ERROR_CHECK(udFile_Load(pFilename, (void**)&pRawFileData, &rawFileLen));
+  //"3dSceneLayer.json.gz"
+  UD_ERROR_CHECK(udCompression_Test(pSceneLayer->pFile, pFilename, (void **)& pRawFileData, &rawFileLen));
   bufferLen = rawFileLen / 2;
 
+  loadTime = udPerfCounterMilliseconds(start);
+  start = udPerfCounterStart();
   do
   {
     bufferLen = bufferLen * 2;
@@ -303,6 +320,10 @@ udResult udFile_LoadGZIP(const char *pFilename, void **ppMemory, int64_t *pFileL
   } while (result == udR_BufferTooSmall);
   UD_ERROR_CHECK(result);
 
+  inflateTime = udPerfCounterMilliseconds(start);
+
+  printf("Loading node took %fms, and inflate took %fms\n", loadTime, inflateTime);
+
   *ppMemory = pBufferData;
   pBufferData = nullptr;
   if (pFileLengthInBytes)
@@ -310,6 +331,8 @@ udResult udFile_LoadGZIP(const char *pFilename, void **ppMemory, int64_t *pFileL
   result = udR_Success;
 
 epilogue:
+  udReleaseMutex(pMutex);
+
   if (pBufferData != nullptr)
     udFree(pBufferData);
 
@@ -328,8 +351,8 @@ udResult vcSceneLayer_LoadFeatureData(const vcSceneLayer *pSceneLayer, vcSceneLa
 
   for (size_t i = 0; i < pNode->featureDataCount; ++i)
   {
-    udSprintf(&pPathBuffer, "zip://%s%c%s.json.gz", pNode->pURL, pSceneLayer->pathSeparatorChar, pNode->pFeatureData[i].pURL);
-    UD_ERROR_CHECK(udFile_LoadGZIP(pPathBuffer, (void**)&pFileData));
+    udSprintf(&pPathBuffer, "%s%c%s.json.gz", pNode->pURL, pSceneLayer->pathSeparatorChar, pNode->pFeatureData[i].pURL);
+    UD_ERROR_CHECK(udFile_LoadGZIP(pSceneLayer, pPathBuffer, (void**)&pFileData));
     UD_ERROR_CHECK(featuresJSON.Parse(pFileData));
 
     // TODO: JIRA task add a udJSON.AsDouble2()
@@ -413,8 +436,8 @@ udResult vcSceneLayer_LoadGeometryData(const vcSceneLayer *pSceneLayer, vcSceneL
 
   for (size_t i = 0; i < pNode->geometryDataCount; ++i)
   {
-    udSprintf(&pPathBuffer, "zip://%s%c%s.bin.gz", pNode->pURL, pSceneLayer->pathSeparatorChar, pNode->pGeometryData[i].pURL);
-    UD_ERROR_CHECK(udFile_LoadGZIP(pPathBuffer, (void**)&pFileData, &fileLen));
+    udSprintf(&pPathBuffer, "%s%c%s.bin.gz", pNode->pURL, pSceneLayer->pathSeparatorChar, pNode->pGeometryData[i].pURL);
+    UD_ERROR_CHECK(udFile_LoadGZIP(pSceneLayer, pPathBuffer, (void**)&pFileData, &fileLen));
 
     pCurrentFile = pFileData;
 
@@ -582,6 +605,7 @@ udResult vcSceneLayer_LoadTextureData(const vcSceneLayer *pSceneLayer, vcSceneLa
   const char *pExtensions[] = { "jpg", "bin" };//, "bin.dds" };
 
   UD_ERROR_IF(pNode->textureDataCount == 0, udR_Success);
+  UD_ERROR_SET(udR_Success);
 
   for (size_t i = 0; i < pNode->textureDataCount; ++i)
   {
@@ -591,9 +615,11 @@ udResult vcSceneLayer_LoadTextureData(const vcSceneLayer *pSceneLayer, vcSceneLa
     // TODO: (EVC-542) other formats (this information is in sharedResource.json)
     for (size_t f = 0; f < udLengthOf(pExtensions); ++f)
     {
-      udSprintf(&pPathBuffer, "zip://%s%c%s.%s", pNode->pURL, pSceneLayer->pathSeparatorChar, pNode->pTextureData[i].pURL, pExtensions[f]);
-      if (udFile_Load(pPathBuffer, (void**)&pFileData, &fileLen) != udR_Success)
-        continue;
+      udSprintf(&pPathBuffer, "%s%c%s.%s", pNode->pURL, pSceneLayer->pathSeparatorChar, pNode->pTextureData[i].pURL, pExtensions[f]);
+      //if (udFile_Load(pPathBuffer, (void**)&pFileData, &fileLen) != udR_Success)
+       // continue;
+
+      //if (udFile_Read())
 
       pPixelData = (uint8_t*)stbi_load_from_memory((stbi_uc*)pFileData, (int)fileLen, (int*)&width, (int*)&height, (int*)&channelCount, 4);
 
@@ -684,12 +710,14 @@ udResult vcSceneLayer_LoadNode(const vcSceneLayer *pSceneLayer, vcSceneLayerNode
   udJSON nodeJSON;
   const char *pPathBuffer = nullptr;
   char *pFileData = nullptr;
+  udFile *pFile = nullptr;
 
   pNode->loadState = vcSceneLayerNode::vcLS_Loading;
 
   // Load the nodes info
-  udSprintf(&pPathBuffer, "zip://%s%c3dNodeIndexDocument.json.gz", pNode->pURL, pSceneLayer->pathSeparatorChar);
-  UD_ERROR_CHECK(udFile_LoadGZIP(pPathBuffer, (void**)&pFileData));
+  udSprintf(&pPathBuffer, "%s%c3dNodeIndexDocument.json.gz", pNode->pURL, pSceneLayer->pathSeparatorChar);
+
+  UD_ERROR_CHECK(udFile_LoadGZIP(pSceneLayer, pPathBuffer, (void**)&pFileData));
   UD_ERROR_CHECK(nodeJSON.Parse(pFileData));
 
   // root needs to load additional info about itself here
@@ -758,6 +786,9 @@ udResult vcSceneLayer_Create(vcSceneLayer **ppSceneLayer, udWorkerPool *pWorkerT
     "vertex-reference-frame"
   };
 
+  uint64_t start = udPerfCounterStart();
+  char *newURL = 0;
+
   vcSceneLayer_Init();
 
   pSceneLayer = udAllocType(vcSceneLayer, 1, udAF_Zero);
@@ -765,9 +796,17 @@ udResult vcSceneLayer_Create(vcSceneLayer **ppSceneLayer, udWorkerPool *pWorkerT
 
   pSceneLayer->pThreadPool = pWorkerThreadPool;
 
-  udSprintf(&pPathBuffer, "zip://%s:3dSceneLayer.json.gz", pSceneLayerURL);
-  UD_ERROR_CHECK(udFile_LoadGZIP(pPathBuffer, (void**)&pFileData));
+  printf("Start\n");
+  udSprintf(&pPathBuffer, "zip://%s", pSceneLayerURL);
+
+  UD_ERROR_CHECK(udFile_Open(&pSceneLayer->pFile, pPathBuffer, udFOF_Read));
+
+  UD_ERROR_CHECK(udFile_LoadGZIP(pSceneLayer, "3dSceneLayer.json.gz", (void**)&pFileData));
   UD_ERROR_CHECK(pSceneLayer->description.Parse(pFileData));
+
+  //udCompression_Test(pSceneLayer->pFile, "3dSceneLayer.json.gz", (void **)& pFileData);
+
+  printf("End: %fms\n", udPerfCounterMilliseconds(start));
 
   // Load root info
   // Use the root path to determine path separator character
@@ -788,7 +827,12 @@ udResult vcSceneLayer_Create(vcSceneLayer **ppSceneLayer, udWorkerPool *pWorkerT
     }
   }
 
-  vcNormalizePath(&pSceneLayer->root.pURL, pSceneLayerURL, pRootPath, ':', pSceneLayer->pathSeparatorChar);
+  vcNormalizePath(&pSceneLayer->root.pURL, "", pRootPath, pSceneLayer->pathSeparatorChar, pSceneLayer->pathSeparatorChar);
+  newURL = udAllocType(char, udStrlen(pSceneLayer->root.pURL) - 1, udAF_Zero);
+  newURL[udStrlen(pSceneLayer->root.pURL) - 1] = '\0';
+  memcpy(newURL, pSceneLayer->root.pURL + 1, udStrlen(pSceneLayer->root.pURL) - 1);
+  udFree(pSceneLayer->root.pURL);
+  pSceneLayer->root.pURL = newURL;
 
   *ppSceneLayer = pSceneLayer;
   pSceneLayer = nullptr;

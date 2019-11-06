@@ -9,6 +9,7 @@
 
 struct vcPolygonModel;
 struct vcTexture;
+struct udFile;
 
 enum vcSceneLayerNormalReferenceFrame
 {
@@ -122,6 +123,7 @@ struct vcSceneLayerNode
 
 struct vcSceneLayer
 {
+  udFile *pFile;
   udWorkerPool *pThreadPool;
 
   char pathSeparatorChar; // '/' or '\\'
