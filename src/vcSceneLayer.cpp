@@ -285,10 +285,10 @@ void vcNormalizePath(const char **ppDest, const char *pRoot, const char *pAppend
 #include "udPlatform.h"
 #include "udPlatformUtil.h"
 
+static udMutex *pMutex = nullptr;
+
 udResult udFile_LoadGZIP(const vcSceneLayer *pSceneLayer, const char *pFilename, void **ppMemory, int64_t *pFileLengthInBytes = nullptr)
 {
-
-  static udMutex *pMutex = nullptr;
   if (pMutex == nullptr)
     pMutex = udCreateMutex();
 
@@ -322,7 +322,7 @@ udResult udFile_LoadGZIP(const vcSceneLayer *pSceneLayer, const char *pFilename,
 
   inflateTime = udPerfCounterMilliseconds(start);
 
-  printf("Loading node took %fms, and inflate took %fms\n", loadTime, inflateTime);
+  //printf("Loading node took %fms, and inflate took %fms\n", loadTime, inflateTime);
 
   *ppMemory = pBufferData;
   pBufferData = nullptr;
@@ -591,6 +591,8 @@ udResult vcSceneLayer_LoadTextureData(const vcSceneLayer *pSceneLayer, vcSceneLa
 {
   udUnused(pSceneLayer);
 
+  udLockMutex(pMutex);
+
   udResult result = udR_Success; // udR_Failure TODO: (EVC-544) Handle texture load failures
   const char *pPathBuffer = nullptr;
   uint8_t *pPixelData = nullptr;
@@ -605,7 +607,6 @@ udResult vcSceneLayer_LoadTextureData(const vcSceneLayer *pSceneLayer, vcSceneLa
   const char *pExtensions[] = { "jpg", "bin" };//, "bin.dds" };
 
   UD_ERROR_IF(pNode->textureDataCount == 0, udR_Success);
-  UD_ERROR_SET(udR_Success);
 
   for (size_t i = 0; i < pNode->textureDataCount; ++i)
   {
@@ -616,6 +617,10 @@ udResult vcSceneLayer_LoadTextureData(const vcSceneLayer *pSceneLayer, vcSceneLa
     for (size_t f = 0; f < udLengthOf(pExtensions); ++f)
     {
       udSprintf(&pPathBuffer, "%s%c%s.%s", pNode->pURL, pSceneLayer->pathSeparatorChar, pNode->pTextureData[i].pURL, pExtensions[f]);
+
+      if (udCompression_Test(pSceneLayer->pFile, pPathBuffer, (void **)&pFileData, &fileLen) != udR_Success)
+        continue;
+
       //if (udFile_Load(pPathBuffer, (void**)&pFileData, &fileLen) != udR_Success)
        // continue;
 
@@ -636,6 +641,8 @@ udResult vcSceneLayer_LoadTextureData(const vcSceneLayer *pSceneLayer, vcSceneLa
 
 epilogue:
   udFree(pPathBuffer);
+
+  udReleaseMutex(pMutex);
   return result;
 }
 
@@ -710,7 +717,7 @@ udResult vcSceneLayer_LoadNode(const vcSceneLayer *pSceneLayer, vcSceneLayerNode
   udJSON nodeJSON;
   const char *pPathBuffer = nullptr;
   char *pFileData = nullptr;
-  udFile *pFile = nullptr;
+  //udFile *pFile = nullptr;
 
   pNode->loadState = vcSceneLayerNode::vcLS_Loading;
 
