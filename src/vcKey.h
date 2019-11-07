@@ -4,18 +4,18 @@
 #include "udResult.h"
 #include "vcState.h"
 
-enum modifierShifts
+enum modifierFlags
 {
   vcMOD_Shift = 1024,
   vcMOD_Ctrl = 2048,
   vcMOD_Alt = 4096,
-  vcMOD_Super = 9192
+  vcMOD_Super = 8192
 };
 
 namespace vcKey
 {
-  bool Pressed(int key);
   bool Pressed(const char *pKey);
+  void GetKeyName(int key, char *pBuffer, uint32_t bufferLen);
   int GetMod(int key);
   void Set(const char *pKey, int value);
   int Get(const char *pKey);

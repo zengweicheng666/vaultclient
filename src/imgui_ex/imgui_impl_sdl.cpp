@@ -198,7 +198,6 @@ bool ImGui_ImplSDL2_ProcessEvent(const SDL_Event* event, vcState *pProgramState)
             return true;
         }
     case SDL_KEYDOWN:
-        pProgramState->currentKey = vcKey::GetMod(event->key.keysym.scancode);
     case SDL_KEYUP:
         {
             // Prevents backspace being grabbed by ImGui if IME composition is in progress
@@ -232,6 +231,10 @@ bool ImGui_ImplSDL2_ProcessEvent(const SDL_Event* event, vcState *pProgramState)
             io.KeyCtrl = ((SDL_GetModState() & KMOD_CTRL) != 0);
             io.KeyAlt = ((SDL_GetModState() & KMOD_ALT) != 0);
             io.KeySuper = ((SDL_GetModState() & KMOD_GUI) != 0);
+
+            if (event->type == SDL_KEYDOWN)
+              pProgramState->currentKey = vcKey::GetMod(event->key.keysym.scancode);
+
             return true;
         }
     // Multi-viewport support

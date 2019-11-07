@@ -523,13 +523,19 @@
   
   "bindingsModalTitle": "Key Bindings",
   "bindingsModalClose": "Close",
-  "bindingsBind": "Bind Key",
+  "bindingsModalSave": "Save Bindings",
+  "bindingsColumnName": "NAME",
+  "bindingsColumnKeyCombination": "KEY COMBINATION",
+  "bindingsColumnDescription": "DESCRIPTION",
+  "bindingsErrorUnbound": "Duplicate key binding has been unbound!",
+  "bindingsUnset": "Unset",
+  
   "bindingsMapMode": "Toggles map display mode, which displays the scene top down and orthographically.",
   "bindingsLockAltitude": "Toggles altitude lock, preventing up/down movement",
   "bindingsGizmoTranslate": "Sets the gizmo to translation mode, allowing you to move objects.",
   "bindingsGizmoRotate": "Sets the gizmo to rotation mode, allowing you to rotate objects.",
   "bindingsGizmoScale": "Sets the gizmo to scaling mode, allowing you to resize objects.",
-  "bindingsGizmoLocalSpace": "Toggles the gizmo's operational coordinate system between local coordinates (relative to the object) and world coordinates (relative to the world space).",
+  "bindingsGizmoLocalSpace": "Toggles the gizmo's operational coordinate system between local coordinates and world coordinates.",
   "bindingsFullscreen": "Toggles presentation mode and sets the client to fullscreen. Presentation mode hides everything except the Scene window.",
   "bindingsAddUDS": "Opens the dialog box to add a UDS model to the scene.",
   "bindingsRemove": "Deletes all selected items from the scene.",
@@ -539,5 +545,8 @@
   "bindingsRight": "Key to move camera to the right.",
   "bindingsUp": "Key to move camera upwards.",
   "bindingsDown": "Key to move camera downwards.",
-  "bindingsBindingsInterface": "Opens the bindings interface."
+  "bindingsBindingsInterface": "Opens the bindings interface.",
+  "bindingsClose": "Key to close current popup.",
+  "bindingsRenameSceneItem": "Key to rename selected scene item.",
+  "bindingsSave": "Key to save key bindings."
 }

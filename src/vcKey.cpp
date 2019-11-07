@@ -1,6 +1,7 @@
 #include "vcKey.h"
 
 #include "vcStrings.h"
+#include "vcStringFormat.h"
 
 #include "udFile.h"
 #include "udJSON.h"
@@ -13,26 +14,9 @@
 #include <unordered_map>
 #include <SDL2/SDL.h>
 
-
 namespace vcKey
 {
   static std::unordered_map<std::string, int> *g_pKeyMap;
-
-  bool Pressed(int key)
-  {
-    ImGuiIO io = ImGui::GetIO();
-
-    if ((key & vcMOD_Shift) && !io.KeyShift)
-      return false;
-    if ((key & vcMOD_Ctrl) && !io.KeyCtrl)
-      return false;
-    if ((key & vcMOD_Alt) && !io.KeyAlt)
-      return false;
-    if ((key & vcMOD_Super) && !io.KeySuper)
-      return false;
-
-    return ImGui::IsKeyPressed((key & 0x1FF), false);
-  }
 
   bool Pressed(const char *pKey)
   {
@@ -52,47 +36,57 @@ namespace vcKey
     return ImGui::IsKeyPressed((key & 0x1FF), false);
   }
 
-  void PrintKeyName(int key)
+  void GetKeyName(int key, char *pBuffer, uint32_t bufferLen)
   {
     if (key == 0)
     {
-      ImGui::Text("UNSET");
+      udStrcpy(pBuffer, (size_t)bufferLen, vcString::Get("bindingsUnset"));
       return;
     }
 
+    const char *pStrings[5] = {};
+
     if ((key & vcMOD_Shift) == vcMOD_Shift)
-    {
-      ImGui::Text("SHIFT+");
-      ImGui::SameLine();
-    }
+      pStrings[0] = "Shift + ";
+    else
+      pStrings[0] = "";
+
     if ((key & vcMOD_Ctrl) == vcMOD_Ctrl)
-    {
-      ImGui::Text("CTRL+");
-      ImGui::SameLine();
-    }
+      pStrings[1] = "Ctrl + ";
+    else
+      pStrings[1] = "";
+
     if ((key & vcMOD_Alt) == vcMOD_Alt)
-    {
-      ImGui::Text("ALT+");
-      ImGui::SameLine();
-    }
+      pStrings[2] = "Alt + ";
+    else
+      pStrings[2] = "";
 
     if ((key & vcMOD_Super) == vcMOD_Super)
     {
 #ifdef UDPLATFORM_WINDOWS
-      ImGui::Text("WIN+");
+      pStrings[3] = "Win + ";
 #elif UDPLATFORM_OSX
-      ImGui::Text("CMD+");
+      pStrings[3] = "Cmd + ";
 #else
-      ImGui::Text("SUPER+");
+      pStrings[3] = "Super + ";
 #endif
-      ImGui::SameLine();
+    }
+    else
+    {
+      pStrings[3] = "";
     }
 
-    ImGui::Text(SDL_GetScancodeName((SDL_Scancode)(key & 0x1FF)));
+    pStrings[4] = SDL_GetScancodeName((SDL_Scancode)(key & 0x1FF));
+   
+    vcStringFormat(pBuffer, bufferLen, "{0}{1}{2}{3}{4}", pStrings, 5);
   }
 
   int GetMod(int key)
   {
+    // Only modifier keys in input
+    if (key >= SDL_SCANCODE_LCTRL && key <= SDL_SCANCODE_RGUI)
+      return 0;
+
     ImGuiIO io = ImGui::GetIO();
     int out = key;
 
@@ -123,33 +117,73 @@ namespace vcKey
 
   void DisplayBindings(vcState *pProgramState)
   {
-    ImGui::BeginChild("bindingsInterfaceChild");
+    static char target[50] = {}; // TODO: Document/reconsider limitation of 50 chars
+    static const char *pError = "";
 
-    PrintKeyName(pProgramState->currentKey);
+    if (target[0] != '\0' && pProgramState->currentKey)
+    {
+      for (std::pair<std::string, int> kvp : (*g_pKeyMap))
+      {
+        if (kvp.second == pProgramState->currentKey)
+        {
+          pError = vcString::Get("bindingsErrorUnbound");
+          Set(kvp.first.c_str(), 0);
+          break;
+        }
+      }
 
-    ImGui::Columns(4);
-    ImGui::SetColumnWidth(0, 100);
-    ImGui::SetColumnWidth(1, 100);
-    ImGui::SetColumnWidth(2, 675);
-    ImGui::SetColumnWidth(3, 75);
+      Set(target, pProgramState->currentKey);
+      target[0] = '\0';
+    }
+
+    if (*pError != '\0')
+      ImGui::TextColored(ImVec4(1, 0, 0, 1), "%s", pError);
+
+    ImGui::Columns(3);
+    ImGui::SetColumnWidth(0, 125);
+    ImGui::SetColumnWidth(1, 125);
+    ImGui::SetColumnWidth(2, 650);
+
+    // Header Row
+    ImGui::SetWindowFontScale(1.05f);
+    ImGui::TextUnformatted(vcString::Get("bindingsColumnName"));
+    ImGui::NextColumn();
+    ImGui::TextUnformatted(vcString::Get("bindingsColumnKeyCombination"));
+    ImGui::NextColumn();
+    ImGui::TextUnformatted(vcString::Get("bindingsColumnDescription"));
+    ImGui::NextColumn();
+    ImGui::SetWindowFontScale(1.f);
 
     for (std::pair<std::string, int> kvp : (*g_pKeyMap))
     {
-      ImGui::Text(kvp.first.c_str());
-      ImGui::NextColumn();
-      PrintKeyName(kvp.second);
-      ImGui::NextColumn();
-      ImGui::Text(vcString::Get(udTempStr("bindings%s", kvp.first.c_str())));
+      if (ImGui::Button(kvp.first.c_str(), ImVec2(-1, 0)))
+      {
+        pError = "";
+        if (udStrEquali(target, kvp.first.c_str()))
+        {
+          Set(kvp.first.c_str(), 0);
+          target[0] = '\0';
+        }
+        else
+        {
+          pProgramState->currentKey = 0;
+          udStrcpy(target, kvp.first.c_str());
+        }
+      }
+
       ImGui::NextColumn();
 
-      if (ImGui::Button(udTempStr("%s###bindButton%d", vcString::Get("bindingsBind"), kvp.second)))
-        Set(kvp.first.c_str(), pProgramState->currentKey);
+      char key[50];
+      GetKeyName(kvp.second, key, (uint32_t)udLengthOf(key));
+      ImGui::TextUnformatted(key);
+
+      ImGui::NextColumn();
+      ImGui::TextUnformatted(vcString::Get(udTempStr("bindings%s", kvp.first.c_str())));
 
       ImGui::NextColumn();
     }
 
     ImGui::EndColumns();
-    ImGui::EndChild();
   }
 
   udResult LoadTableFromMemory(const char *pJSON)
