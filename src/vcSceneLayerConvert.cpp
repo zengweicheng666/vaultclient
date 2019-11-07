@@ -87,10 +87,11 @@ udResult vcSceneLayerConvert_RecursiveGenerateLeafNodeList(vcSceneLayerConvert *
   if (pNode != &pSceneLayerConvert->pSceneLayer->root)
     UD_ERROR_CHECK(vcSceneLayer_LoadNode(pSceneLayerConvert->pSceneLayer, pNode));
 
-  if (pNode->childrenCount == 0)
+  if (pNode->childrenCount == 0)// && leafNodes.length <= 250) //95000
   {
-    UD_ERROR_CHECK(vcSceneLayer_LoadNodeInternals(pSceneLayerConvert->pSceneLayer, pNode));
+    //UD_ERROR_CHECK(vcSceneLayer_LoadNodeInternals(pSceneLayerConvert->pSceneLayer, pNode));
     leafNodes.PushBack(pNode);
+    printf("Adding leaf: %zu\n", leafNodes.length);
     UD_ERROR_SET(udR_Success);
   }
 
@@ -201,6 +202,8 @@ vdkError vcSceneLayerConvert_Open(vdkConvertCustomItem *pConvertInput, uint32_t 
   if (vcSceneLayerConvert_GenerateLeafNodeList(pSceneLayerConvert) != udR_Success)
     UD_ERROR_SET(vE_Failure);
 
+  printf("Leaf node count = %zu\n", pSceneLayerConvert->leafNodes.length);
+
   if (vcSceneLayerConvert_GatherEstimates(pSceneLayerConvert, pConvertInput->sourceResolution) != udR_Success)
     UD_ERROR_SET(vE_Failure);
 
@@ -246,6 +249,11 @@ vdkError vcSceneLayerConvert_ReadPointsInt(vdkConvertCustomItem *pConvertInput, 
   while (pBuffer->pointCount < pBuffer->pointsAllocated && pSceneLayerConvert->leafIndex < pSceneLayerConvert->leafNodes.length)
   {
     vcSceneLayerNode *pNode = pSceneLayerConvert->leafNodes[pSceneLayerConvert->leafIndex];
+    if (pNode->internalsLoadState == vcSceneLayerNode::vcILS_BasicNodeData)
+    {
+      printf("Beginning leaf %zu\n", pSceneLayerConvert->leafIndex);
+      vcSceneLayer_LoadNodeInternals(pSceneLayerConvert->pSceneLayer, pNode);
+    }
 
     // For each geometry
     while (pBuffer->pointCount < pBuffer->pointsAllocated && pSceneLayerConvert->geometryIndex < pNode->geometryDataCount)
@@ -375,6 +383,8 @@ vdkError vcSceneLayerConvert_ReadPointsInt(vdkConvertCustomItem *pConvertInput, 
     if (pSceneLayerConvert->geometryIndex >= pNode->geometryDataCount)
     {
       // current leaf done, move onto next
+      vcSceneLayer_RecursiveDestroyNode(pNode);
+
       ++pSceneLayerConvert->leafIndex;
       pSceneLayerConvert->primIndex = 0;
       pSceneLayerConvert->geometryIndex = 0;
@@ -402,6 +412,8 @@ vdkError vcSceneLayerConvert_AddItem(vdkConvertContext *pConvertContext, const c
   vdkError result;
   vcSceneLayerConvert *pSceneLayerConvert = nullptr;
   vdkConvertCustomItem customItem = {};
+
+  printf("Begin adding item\n");
 
   if (vcSceneLayerConvert_Create(&pSceneLayerConvert, pSceneLayerURL) != udR_Success)
     UD_ERROR_SET(vE_Failure);
@@ -431,6 +443,7 @@ vdkError vcSceneLayerConvert_AddItem(vdkConvertContext *pConvertContext, const c
 
   UD_ERROR_CHECK(vdkConvert_AddCustomItem(pConvertContext, &customItem));
 
+  printf("Done adding item\n");
   result = vE_Success;
 
 epilogue:

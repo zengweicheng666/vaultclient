@@ -952,6 +952,12 @@ void vcSceneLayer_RecursiveDestroyNode(vcSceneLayerNode *pNode)
   udFree(pNode->pChildren);
   udFree(pNode->pURL);
   udFree(pNode->pID);
+
+  pNode->sharedResourceCount = 0;
+  pNode->attributeDataCount = 0;
+  pNode->textureDataCount = 0;
+  pNode->featureDataCount = 0;
+  pNode->geometryDataCount = 0;
 }
 
 udResult vcSceneLayer_Destroy(vcSceneLayer **ppSceneLayer)
