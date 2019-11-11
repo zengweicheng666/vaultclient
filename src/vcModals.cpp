@@ -827,20 +827,24 @@ void vcModals_DrawBindings(vcState *pProgramState)
   if (pProgramState->openModals & (1 << vcMT_Bindings))
     ImGui::OpenPopup(vcString::Get("bindingsModalTitle"));
 
-  ImGui::SetNextWindowSize(ImVec2(900, 600));
+  ImGui::SetNextWindowSize(ImVec2(915, 630));
   if (ImGui::BeginPopupModal(vcString::Get("bindingsModalTitle"), nullptr, ImGuiWindowFlags_AlwaysAutoResize))
   {
     ImGui::BeginChild("bindingsInterfaceChild", ImVec2(-1, -1));
 
     vcKey::DisplayBindings(pProgramState);
 
-    ImGui::Columns(2);
+    ImGui::Columns(3, "ButtonRow");
     if (ImGui::Button(udTempStr("%s###bindingsClose" , vcString::Get("bindingsModalClose")), ImVec2(-1, 25)) || ImGui::GetIO().KeysDown[vcKey::Get("Close")])
       ImGui::CloseCurrentPopup();
 
     ImGui::NextColumn();
+    if (ImGui::Button(udTempStr("%s###bindingsSave", vcString::Get("bindingsModalDefaults")), ImVec2(-1, 25)) || vcKey::Pressed("Load"))
+      vcKey::LoadTableFromFile("asset://assets/bindings/default.json");
+
+    ImGui::NextColumn();
     if (ImGui::Button(udTempStr("%s###bindingsSave", vcString::Get("bindingsModalSave")), ImVec2(-1, 25)) || vcKey::Pressed("Save"))
-      vcKey::SaveTableToFile("asset://assets/bindings/standard.json");
+      vcKey::SaveTableToFile("asset://assets/bindings/user.json");
 
     ImGui::EndColumns();
 

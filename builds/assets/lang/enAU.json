@@ -524,6 +524,7 @@
   "bindingsModalTitle": "Key Bindings",
   "bindingsModalClose": "Close",
   "bindingsModalSave": "Save Bindings",
+  "bindingsModalDefaults": "Load Defaults",
   "bindingsColumnName": "NAME",
   "bindingsColumnKeyCombination": "KEY COMBINATION",
   "bindingsColumnDescription": "DESCRIPTION",
