@@ -16,6 +16,22 @@
 
 namespace vcKey
 {
+  static const char *pModText[] =
+  {
+    "Shift",
+    "Ctrl",
+    "Alt",
+    "Super"
+  };
+
+  static const modifierFlags modList[] =
+  {
+    vcMOD_Shift,
+    vcMOD_Ctrl,
+    vcMOD_Alt,
+    vcMOD_Super
+  };
+
   static std::unordered_map<std::string, int> *g_pKeyMap;
 
   bool Pressed(const char *pKey)
@@ -186,6 +202,34 @@ namespace vcKey
     ImGui::EndColumns();
   }
 
+  int DecodeKeyString(const char *pBind)
+  {
+    if (pBind == nullptr || *pBind == '\0')
+      return 0;
+
+    int len = (int)udStrlen(pBind);
+    size_t index = 0;
+    int value = 0;
+
+    if (udStrrchr(pBind, "+", (size_t *)&index) != nullptr)
+    {
+      size_t modIndex = 0;
+
+      for (int i = 0; i < (int)udLengthOf(modList); ++i)
+      {
+        udStrstr(pBind, len, pModText[i], &modIndex);
+        if ((int)modIndex != len)
+          value |= modList[i];
+      }
+
+      pBind += index + 2;
+    }
+
+    value += SDL_GetScancodeFromName(pBind);
+
+    return value;
+  }
+
   udResult LoadTableFromMemory(const char *pJSON)
   {
     udResult result;
@@ -202,9 +246,10 @@ namespace vcKey
     for (size_t i = 0; i < count; ++i)
     {
       const char *pKey = bindings.GetMemberName(i);
-      int value = bindings.GetMember(i)->AsInt();
-
-      Set(pKey, value);
+      if (bindings.GetMember(i)->IsNumeric())
+        Set(pKey, bindings.GetMember(i)->AsInt());
+      else
+        Set(pKey, DecodeKeyString(bindings.GetMember(i)->AsString()));
     }
 
     result = udR_Success;
@@ -234,13 +279,17 @@ epilogue:
     const char *pOutput = nullptr;
     udFile *pFile = nullptr;
     udResult result;
+    char buffer[50] = {};
 
     UD_ERROR_CHECK(udFile_Open(&pFile, pFilename, udFOF_Write));
-
+    
     for (std::pair<std::string, int> kvp : (*g_pKeyMap))
-      UD_ERROR_CHECK(output.Set("%s = %d", kvp.first.c_str(), kvp.second));
+    {
+      GetKeyName(kvp.second, buffer, (uint32_t)udLengthOf(buffer));
+      UD_ERROR_CHECK(output.Set("%s = '%s'", kvp.first.c_str(), buffer));
+    }
 
-    UD_ERROR_CHECK(output.Export(&pOutput));
+    UD_ERROR_CHECK(output.Export(&pOutput, udJEO_JSON | udJEO_FormatWhiteSpace));
     UD_ERROR_CHECK(udFile_Write(pFile, pOutput, udStrlen(pOutput)));
 
     result = udR_Success;
