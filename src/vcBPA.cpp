@@ -83,7 +83,8 @@ struct vcBPAGrid
     vertices.Init(512);
     triangles.Init(512);
     edges.Init(512);
-    vdkPointBufferF64_Create(&pBuffer, standardContent, 1 << 20, nullptr, 0);
+    udUnused(standardContent);
+    //vdkPointBufferF64_Create(&pBuffer, standardContent, 1 << 20, nullptr, 0);
   }
 
   void Deinit()

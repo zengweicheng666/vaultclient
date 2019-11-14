@@ -17,9 +17,8 @@ vcPolyModelNode::vcPolyModelNode(vdkProject *pProject, vdkProjectNode *pNode, vc
   m_matrix = udDouble4x4::identity();
   m_cullFace = vcGLSCM_Back;
 
-  //TODO: Do this load async
-  if (vcPolygonModel_CreateFromURL(&m_pModel, pNode->pURI) == udR_Success)
-    m_loadStatus = vcSLS_Loaded;
+  if (vcPolygonModel_AsyncCreateFromURL(&m_pModel, pNode->pURI, pProgramState->pWorkerPool) == udR_Success)
+    m_loadStatus = vcSLS_Loading;
   else
     m_loadStatus = vcSLS_Failed;
 
@@ -62,8 +61,14 @@ void vcPolyModelNode::OnNodeUpdate(vcState *pProgramState)
 
 void vcPolyModelNode::AddToScene(vcState * /*pProgramState*/, vcRenderData *pRenderData)
 {
-  if (m_loadStatus != vcSLS_Loaded || !m_visible)
+  if (!m_visible || m_pModel == nullptr)
     return;
+
+  if (m_loadStatus != vcSLS_Loaded)
+  {
+    if (m_pModel->assetLoadRemaining.Get() == 0)
+      m_loadStatus = vcSLS_Loaded;
+  }
 
   vcRenderPolyInstance *pModel = pRenderData->polyModels.PushBack();
   pModel->pModel = m_pModel;
