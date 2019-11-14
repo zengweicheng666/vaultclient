@@ -1,6 +1,14 @@
 # **Euclideon Vault Client Translation Guide**
 
 ## Changelist
+- Version 0.5.0
+  - Added:
+    -
+  - Changed:
+    - 
+  - Removed:
+    - Key Bindings
+	  - `sceneLockAltitudeKey`, `sceneGizmoTranslateKey`, `sceneGizmoRotateKey`, `sceneGizmoScaleKey`, `sceneGizmoLocalSpaceKey`, `sceneFullscreenKey`, `sceneMapModeKey`, `sceneExplorerRemoveKey`, `sceneExplorerAddUDSKey`
 
 - Version 0.4.1
   - Added:
@@ -14,7 +22,7 @@
     - 
   - Removed:
     - `polyModelInvertFaces`
-
+	
 - Version 0.4.0
   - Added:
     - Settings

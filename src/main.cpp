@@ -44,7 +44,7 @@
 #include "vcPOI.h"
 #include "vcStringFormat.h"
 #include "vcInternalTexturesData.h"
-#include "vcKey.h"
+#include "vcHotkey.h"
 
 #include "gl/vcGLState.h"
 #include "gl/vcFramebuffer.h"
@@ -232,7 +232,10 @@ void vcMain_MainLoop(vcState *pProgramState)
   SDL_Event event;
   while (SDL_PollEvent(&event))
   {
-    if (!ImGui_ImplSDL2_ProcessEvent(&event, pProgramState))
+    if (event.type == SDL_KEYDOWN)
+      pProgramState->currentKey = vcHotkey::GetMod(event.key.keysym.scancode);
+
+    if (!ImGui_ImplSDL2_ProcessEvent(&event))
     {
       if (event.type == SDL_WINDOWEVENT)
       {
@@ -904,8 +907,6 @@ int main(int argc, char **args)
 
   vcTexture_CreateFromMemory(&programState.pCompanyWatermark, (void *)logoData, logoDataSize);
 
-  vcKey::LoadTableFromFile("asset://assets/bindings/user.json");
-
 #if UDPLATFORM_EMSCRIPTEN
   emscripten_set_main_loop_arg(vcMain_MainLoop, &programState, 0, 1);
 #else
@@ -948,7 +949,6 @@ epilogue:
   vcRender_Destroy(&programState, &programState.pRenderContext);
   vcTexture_Destroy(&programState.tileModal.pServerIcon);
   vcString::FreeTable(&programState.languageInfo);
-  vcKey::FreeTable();
   vcSession_Logout(&programState);
 
   vcProject_Deinit(&programState, &programState.activeProject);
@@ -1048,7 +1048,7 @@ void vcRenderSceneUI(vcState *pProgramState, const ImVec2 &windowPos, const ImVe
     if (ImGui::Begin(vcString::Get("sceneCameraSettings"), nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoDocking))
     {
       // Basic Settings
-      if (vcMenuBarButton(pProgramState->pUITexture, vcString::Get("sceneLockAltitude"), SDL_GetScancodeName((SDL_Scancode)vcKey::Get("LockAltitude")), vcMBBI_LockAltitude, vcMBBG_FirstItem, pProgramState->settings.camera.lockAltitude))
+      if (vcMenuBarButton(pProgramState->pUITexture, vcString::Get("sceneLockAltitude"), SDL_GetScancodeName((SDL_Scancode)vcHotkey::Get(vcB_LockAltitude)), vcMBBI_LockAltitude, vcMBBG_FirstItem, pProgramState->settings.camera.lockAltitude))
         pProgramState->settings.camera.lockAltitude = !pProgramState->settings.camera.lockAltitude;
 
       if (vcMenuBarButton(pProgramState->pUITexture, vcString::Get("sceneCameraInfo"), nullptr, vcMBBI_ShowCameraSettings, vcMBBG_SameGroup, pProgramState->settings.presentation.showCameraInfo))
@@ -1058,25 +1058,25 @@ void vcRenderSceneUI(vcState *pProgramState, const ImVec2 &windowPos, const ImVe
         pProgramState->settings.presentation.showProjectionInfo = !pProgramState->settings.presentation.showProjectionInfo;
 
       // Gizmo Settings
-      if (vcMenuBarButton(pProgramState->pUITexture, vcString::Get("sceneGizmoTranslate"), SDL_GetScancodeName((SDL_Scancode)vcKey::Get("GizmoTranslate")), vcMBBI_Translate, vcMBBG_NewGroup, pProgramState->gizmo.operation == vcGO_Translate))
+      if (vcMenuBarButton(pProgramState->pUITexture, vcString::Get("sceneGizmoTranslate"), SDL_GetScancodeName((SDL_Scancode)vcHotkey::Get(vcB_GizmoTranslate)), vcMBBI_Translate, vcMBBG_NewGroup, pProgramState->gizmo.operation == vcGO_Translate))
         pProgramState->gizmo.operation = pProgramState->gizmo.operation == vcGO_Translate ? vcGO_NoGizmo : vcGO_Translate;
 
-      if (vcMenuBarButton(pProgramState->pUITexture, vcString::Get("sceneGizmoRotate"), SDL_GetScancodeName((SDL_Scancode)vcKey::Get("GizmoRotate")), vcMBBI_Rotate, vcMBBG_SameGroup, pProgramState->gizmo.operation == vcGO_Rotate))
+      if (vcMenuBarButton(pProgramState->pUITexture, vcString::Get("sceneGizmoRotate"), SDL_GetScancodeName((SDL_Scancode)vcHotkey::Get(vcB_GizmoRotate)), vcMBBI_Rotate, vcMBBG_SameGroup, pProgramState->gizmo.operation == vcGO_Rotate))
         pProgramState->gizmo.operation = pProgramState->gizmo.operation == vcGO_Rotate ? vcGO_NoGizmo : vcGO_Rotate;
 
-      if (vcMenuBarButton(pProgramState->pUITexture, vcString::Get("sceneGizmoScale"), SDL_GetScancodeName((SDL_Scancode)vcKey::Get("GizmoScale")), vcMBBI_Scale, vcMBBG_SameGroup, pProgramState->gizmo.operation == vcGO_Scale))
+      if (vcMenuBarButton(pProgramState->pUITexture, vcString::Get("sceneGizmoScale"), SDL_GetScancodeName((SDL_Scancode)vcHotkey::Get(vcB_GizmoScale)), vcMBBI_Scale, vcMBBG_SameGroup, pProgramState->gizmo.operation == vcGO_Scale))
         pProgramState->gizmo.operation = pProgramState->gizmo.operation == vcGO_Scale ? vcGO_NoGizmo : vcGO_Scale;
 
-      if (vcMenuBarButton(pProgramState->pUITexture, vcString::Get("sceneGizmoLocalSpace"), SDL_GetScancodeName((SDL_Scancode)vcKey::Get("GizmoLocalSpace")), vcMBBI_UseLocalSpace, vcMBBG_SameGroup, pProgramState->gizmo.coordinateSystem == vcGCS_Local))
+      if (vcMenuBarButton(pProgramState->pUITexture, vcString::Get("sceneGizmoLocalSpace"), SDL_GetScancodeName((SDL_Scancode)vcHotkey::Get(vcB_GizmoLocalSpace)), vcMBBI_UseLocalSpace, vcMBBG_SameGroup, pProgramState->gizmo.coordinateSystem == vcGCS_Local))
         pProgramState->gizmo.coordinateSystem = (pProgramState->gizmo.coordinateSystem == vcGCS_Scene) ? vcGCS_Local : vcGCS_Scene;
 
       // Fullscreens
-      if (vcMenuBarButton(pProgramState->pUITexture, vcString::Get("sceneFullscreen"), SDL_GetScancodeName((SDL_Scancode)vcKey::Get("Fullscreen")), vcMBBI_FullScreen, vcMBBG_NewGroup, pProgramState->settings.window.presentationMode))
+      if (vcMenuBarButton(pProgramState->pUITexture, vcString::Get("sceneFullscreen"), SDL_GetScancodeName((SDL_Scancode)vcHotkey::Get(vcB_Fullscreen)), vcMBBI_FullScreen, vcMBBG_NewGroup, pProgramState->settings.window.presentationMode))
         vcMain_PresentationMode(pProgramState);
 
       // map mode
       char mapmodeKey[50];
-      vcKey::GetKeyName(vcKey::Get("MapMode"), mapmodeKey, (int)udLengthOf(mapmodeKey));
+      vcHotkey::GetKeyName(vcB_MapMode, mapmodeKey, (int)udLengthOf(mapmodeKey));
       if (vcMenuBarButton(pProgramState->pUITexture, vcString::Get("sceneMapMode"), mapmodeKey, vcMBBI_MapMode, vcMBBG_NewGroup, pProgramState->settings.camera.cameraMode == vcCM_OrthoMap))
         vcCamera_SwapMapMode(pProgramState);
 
@@ -1334,7 +1334,7 @@ void vcRenderSceneWindow(vcState *pProgramState)
     vcFramebuffer_Bind(pProgramState->pDefaultFramebuffer);
   }
 
-  if (!pProgramState->modalOpen && (vcKey::Pressed("Fullscreen") || ImGui::IsNavInputPressed(ImGuiNavInput_TweakFast, ImGuiInputReadMode_Released)))
+  if (!pProgramState->modalOpen && (vcHotkey::IsPressed(vcB_Fullscreen) || ImGui::IsNavInputPressed(ImGuiNavInput_TweakFast, ImGuiInputReadMode_Released)))
     vcMain_PresentationMode(pProgramState);
   if (pProgramState->settings.responsiveUI == vcPM_Show)
     pProgramState->showUI = true;
@@ -2249,12 +2249,11 @@ void vcRenderWindow(vcState *pProgramState)
 #endif
 
 #if !UDPLATFORM_LINUX
-  if (vcKey::Pressed("MapMode"))
-  if (io.KeyCtrl && ImGui::IsKeyPressed(SDL_SCANCODE_M))
+  if (vcHotkey::IsPressed(vcB_MapMode))
     vcCamera_SwapMapMode(pProgramState);
 #endif
 
-  if (vcKey::Pressed("BindingsInterface"))
+  if (vcHotkey::IsPressed(vcB_BindingsInterface))
     vcModals_OpenModal(pProgramState, vcMT_Bindings);
 
   //end keyboard/mouse handling
@@ -2287,7 +2286,7 @@ void vcRenderWindow(vcState *pProgramState)
     {
       if (ImGui::Begin(udTempStr("%s###sceneExplorerDock", vcString::Get("sceneExplorerTitle")), &pProgramState->settings.window.windowsOpen[vcDocks_SceneExplorer]))
       {
-        if (vcMenuBarButton(pProgramState->pUITexture, vcString::Get("sceneExplorerAddUDS"), vcString::Get("sceneExplorerAddUDSKey"), vcMBBI_AddPointCloud, vcMBBG_FirstItem) || vcKey::Pressed("AddUDS"))
+        if (vcMenuBarButton(pProgramState->pUITexture, vcString::Get("sceneExplorerAddUDS"), vcString::Get("sceneExplorerAddUDSKey"), vcMBBI_AddPointCloud, vcMBBG_FirstItem) || vcHotkey::IsPressed(vcB_AddUDS))
           vcModals_OpenModal(pProgramState, vcMT_AddUDS);
 
         if (vcMenuBarButton(pProgramState->pUITexture, vcString::Get("sceneExplorerAddFolder"), nullptr, vcMBBI_AddFolder, vcMBBG_SameGroup))
@@ -2367,7 +2366,7 @@ void vcRenderWindow(vcState *pProgramState)
           ImGui::EndPopup();
         }
 
-        if (vcMenuBarButton(pProgramState->pUITexture, vcString::Get("sceneExplorerRemove"), vcString::Get("sceneExplorerRemoveKey"), vcMBBI_Remove, vcMBBG_NewGroup) || (vcKey::Pressed("Remove") && !ImGui::IsAnyItemActive()))
+        if (vcMenuBarButton(pProgramState->pUITexture, vcString::Get("sceneExplorerRemove"), vcString::Get("sceneExplorerRemoveKey"), vcMBBI_Remove, vcMBBG_NewGroup) || (vcHotkey::IsPressed(vcB_Remove) && !ImGui::IsAnyItemActive()))
           vcProject_RemoveSelected(pProgramState);
 
         // Tree view for the scene

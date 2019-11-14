@@ -46,9 +46,6 @@
 #include "imgui_impl_sdl.h"
 #include "udPlatform.h"
 
-#include "vcState.h"
-#include "vcKey.h"
-
 // SDL
 // (the multi-viewports feature requires SDL features supported from SDL 2.0.4+. SDL 2.0.5+ is highly recommended)
 #include <SDL2/SDL.h>
@@ -172,7 +169,7 @@ SDL_Window* ImGui_ImplSDL2_CreateWindow(const char* title, int x, int y, int w, 
 // - When io.WantCaptureKeyboard is true, do not dispatch keyboard input data to your main application.
 // Generally you may always pass all inputs to dear imgui, and hide them from your application based on those two flags.
 // If you have multiple SDL events and some of them are not meant to be used by dear imgui, you may need to filter events based on their windowID field.
-bool ImGui_ImplSDL2_ProcessEvent(const SDL_Event* event, vcState *pProgramState)
+bool ImGui_ImplSDL2_ProcessEvent(const SDL_Event* event)
 {
     ImGuiIO& io = ImGui::GetIO();
     switch (event->type)
@@ -231,9 +228,6 @@ bool ImGui_ImplSDL2_ProcessEvent(const SDL_Event* event, vcState *pProgramState)
             io.KeyCtrl = ((SDL_GetModState() & KMOD_CTRL) != 0);
             io.KeyAlt = ((SDL_GetModState() & KMOD_ALT) != 0);
             io.KeySuper = ((SDL_GetModState() & KMOD_GUI) != 0);
-
-            if (event->type == SDL_KEYDOWN)
-              pProgramState->currentKey = vcKey::GetMod(event->key.keysym.scancode);
 
             return true;
         }

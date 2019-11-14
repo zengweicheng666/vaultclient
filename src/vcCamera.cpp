@@ -1,7 +1,7 @@
 #include "vcCamera.h"
 #include "vcState.h"
 #include "vcPOI.h"
-#include "vcKey.h"
+#include "vcHotkey.h"
 
 #include "imgui.h"
 #include "imgui_ex/ImGuizmo.h"
@@ -697,19 +697,19 @@ void vcCamera_HandleSceneInput(vcState *pProgramState, udDouble3 oscMove, udFloa
 
   if ((!ImGui::GetIO().WantCaptureKeyboard || isFocused) && !pProgramState->modalOpen)
   {
-    keyboardInput.y += io.KeysDown[vcKey::Get("Forward")] - io.KeysDown[vcKey::Get("Backward")];
-    keyboardInput.x += io.KeysDown[vcKey::Get("Right")] - io.KeysDown[vcKey::Get("Left")];
-    keyboardInput.z += io.KeysDown[vcKey::Get("Up")] - io.KeysDown[vcKey::Get("Down")];
+    keyboardInput.y += io.KeysDown[vcHotkey::Get(vcB_Forward)] - io.KeysDown[vcHotkey::Get(vcB_Backward)];
+    keyboardInput.x += io.KeysDown[vcHotkey::Get(vcB_Right)] - io.KeysDown[vcHotkey::Get(vcB_Left)];
+    keyboardInput.z += io.KeysDown[vcHotkey::Get(vcB_Up)] - io.KeysDown[vcHotkey::Get(vcB_Down)];
 
-    if (vcKey::Pressed("LockAltitude"))
+    if (vcHotkey::IsPressed(vcB_LockAltitude))
       pProgramState->settings.camera.lockAltitude = !pProgramState->settings.camera.lockAltitude;
-    if (vcKey::Pressed("GizmoTranslate"))
+    if (vcHotkey::IsPressed(vcB_GizmoTranslate))
       pProgramState->gizmo.operation = ((pProgramState->gizmo.operation == vcGO_Translate) ? vcGO_NoGizmo : vcGO_Translate);
-    if (vcKey::Pressed("GizmoRotate"))
+    if (vcHotkey::IsPressed(vcB_GizmoRotate))
       pProgramState->gizmo.operation = ((pProgramState->gizmo.operation == vcGO_Rotate) ? vcGO_NoGizmo : vcGO_Rotate);
-    if (vcKey::Pressed("GizmoScale"))
+    if (vcHotkey::IsPressed(vcB_GizmoScale))
       pProgramState->gizmo.operation = ((pProgramState->gizmo.operation == vcGO_Scale) ? vcGO_NoGizmo : vcGO_Scale);
-    if (vcKey::Pressed("GizmoLocalSpace"))
+    if (vcHotkey::IsPressed(vcB_GizmoLocalSpace))
       pProgramState->gizmo.coordinateSystem = ((pProgramState->gizmo.coordinateSystem == vcGCS_Scene) ? vcGCS_Local : vcGCS_Scene);
   }
 

@@ -5,7 +5,7 @@
 #include "vcRender.h" // Included just for "ClearTiles"
 #include "vcFenceRenderer.h"
 #include "vcModals.h"
-#include "vcKey.h"
+#include "vcHotkey.h"
 
 #include "udStringUtil.h"
 
@@ -217,7 +217,7 @@ void vcFolder::HandleImGui(vcState *pProgramState, size_t *pItemID)
         }
 
         pSceneItem->m_expanded = ImGui::TreeNodeEx(udTempStr("%s###SXIName%zu", pNode->pName, *pItemID), flags);
-        if (pSceneItem->m_selected && pProgramState->sceneExplorer.selectedItems.back().pParent == m_pNode && pProgramState->sceneExplorer.selectedItems.back().pItem == pNode && ImGui::GetIO().KeysDown[vcKey::Get("RenameSceneItem")])
+        if (pSceneItem->m_selected && pProgramState->sceneExplorer.selectedItems.back().pParent == m_pNode && pProgramState->sceneExplorer.selectedItems.back().pItem == pNode && ImGui::GetIO().KeysDown[vcHotkey::Get(vcB_RenameSceneItem)])
           pSceneItem->m_editName = true;
       }
 
