@@ -613,7 +613,12 @@ void vcConvert_ShowUI(vcState *pProgramState)
 
         // Watermark
         if (ImGui::Button(vcString::Get("convertLoadWatermark")))
-          vcModals_OpenModal(pProgramState, vcMT_LoadWatermark);
+        {
+          vcFileDialog_Show(&pProgramState->fileDialog, pProgramState->modelPath, SupportedFileTypes_Images, true, [pProgramState] {
+            vdkConvert_AddWatermark(pProgramState->pConvertContext->jobs[pProgramState->pConvertContext->selectedItem]->pConvertContext, pProgramState->modelPath);
+            pProgramState->pConvertContext->jobs[pProgramState->pConvertContext->selectedItem]->watermark.isDirty = true;
+          });
+        }
 
         if (pSelectedJob->watermark.pTexture != nullptr)
         {

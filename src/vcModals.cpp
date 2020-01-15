@@ -413,8 +413,6 @@ void vcModals_DrawFileModal(vcState *pProgramState)
 {
   if (pProgramState->openModals & (1 << vcMT_AddUDS))
     ImGui::OpenPopup(vcString::Get("sceneExplorerAddUDSTitle"));
-  if (pProgramState->openModals & (1 << vcMT_ImportProject))
-    ImGui::OpenPopup(vcString::Get("menuProjectImportTitle"));
   if (pProgramState->openModals & (1 << vcMT_ExportProject))
     ImGui::OpenPopup(vcString::Get("menuProjectExportTitle"));
   if (pProgramState->openModals & (1 << vcMT_ConvertAdd))
@@ -429,10 +427,6 @@ void vcModals_DrawFileModal(vcState *pProgramState)
   ImGui::SetNextWindowSize(ImVec2(800, 600), ImGuiCond_Appearing);
   if (ImGui::BeginPopupModal(vcString::Get("sceneExplorerAddUDSTitle")))
     mode = vcMT_AddUDS;
-
-  ImGui::SetNextWindowSize(ImVec2(800, 600), ImGuiCond_Appearing);
-  if (ImGui::BeginPopupModal(vcString::Get("menuProjectImportTitle")))
-    mode = vcMT_ImportProject;
 
   ImGui::SetNextWindowSize(ImVec2(800, 600), ImGuiCond_Appearing);
   if (ImGui::BeginPopupModal(vcString::Get("menuProjectExportTitle")))
@@ -479,37 +473,31 @@ void vcModals_DrawFileModal(vcState *pProgramState)
     if (mode == vcMT_AddUDS)
     {
       const char *fileExtensions[] = { ".uds", ".ssf", ".udg" };
-      if (vcFileDialog_Show(pProgramState->modelPath, sizeof(pProgramState->modelPath), true, fileExtensions, udLengthOf(fileExtensions)))
-        loadFile = true;
-    }
-    else if (mode == vcMT_ImportProject)
-    {
-      const char *fileExtensions[] = { ".json", ".udp" };
-      if (vcFileDialog_Show(pProgramState->modelPath, sizeof(pProgramState->modelPath), true, fileExtensions, udLengthOf(fileExtensions)))
+      if (vcFileDialog_DrawImGui(pProgramState->modelPath, sizeof(pProgramState->modelPath), true, fileExtensions, udLengthOf(fileExtensions)))
         loadFile = true;
     }
     else if (mode == vcMT_ExportProject)
     {
       const char *fileExtensions[] = { ".json" };
-      if (vcFileDialog_Show(pProgramState->modelPath, sizeof(pProgramState->modelPath), false, fileExtensions, udLengthOf(fileExtensions)))
+      if (vcFileDialog_DrawImGui(pProgramState->modelPath, sizeof(pProgramState->modelPath), false, fileExtensions, udLengthOf(fileExtensions)))
         saveFile = true;
     }
     else if (mode == vcMT_ConvertAdd)
     {
       // TODO: List all supported conversion filetypes
-      if (vcFileDialog_Show(pProgramState->modelPath, sizeof(pProgramState->modelPath), false, nullptr, 0)) // No extensions means show every file
+      if (vcFileDialog_DrawImGui(pProgramState->modelPath, sizeof(pProgramState->modelPath), false, nullptr, 0)) // No extensions means show every file
         loadFile = true;
     }
     else if (mode == vcMT_ConvertOutput)
     {
       const char *fileExtensions[] = { ".uds" };
-      if (vcFileDialog_Show(pProgramState->modelPath, sizeof(pProgramState->modelPath), false, fileExtensions, udLengthOf(fileExtensions)))
+      if (vcFileDialog_DrawImGui(pProgramState->modelPath, sizeof(pProgramState->modelPath), false, fileExtensions, udLengthOf(fileExtensions)))
         loadFile = true;
     }
     else if (mode == vcMT_ConvertTempDirectory)
     {
       const char *fileExtensions[] = { "/", "\\" };
-      if (vcFileDialog_Show(pProgramState->modelPath, sizeof(pProgramState->modelPath), false, fileExtensions, udLengthOf(fileExtensions)))
+      if (vcFileDialog_DrawImGui(pProgramState->modelPath, sizeof(pProgramState->modelPath), false, fileExtensions, udLengthOf(fileExtensions)))
         loadFile = true;
     }
 
@@ -549,72 +537,6 @@ void vcModals_DrawFileModal(vcState *pProgramState)
       pProgramState->modelPath[0] = '\0';
       ImGui::CloseCurrentPopup();
     }
-    ImGui::EndPopup();
-  }
-}
-
-void vcModals_DrawLoadWatermark(vcState *pProgramState)
-{
-  if (pProgramState->openModals & (1 << vcMT_LoadWatermark))
-    ImGui::OpenPopup(vcString::Get("convertLoadWatermark"));
-  if (pProgramState->openModals & (1 << vcMT_ChangeDefaultWatermark))
-    ImGui::OpenPopup(vcString::Get("convertChangeDefaultWatermark"));
-
-  vcModalTypes mode = vcMT_Count;
-
-  ImGui::SetNextWindowSize(ImVec2(800, 600), ImGuiCond_Appearing);
-  if (ImGui::BeginPopupModal(vcString::Get("convertLoadWatermark")))
-    mode = vcMT_LoadWatermark;
-
-  ImGui::SetNextWindowSize(ImVec2(800, 600), ImGuiCond_Appearing);
-  if (ImGui::BeginPopupModal(vcString::Get("convertChangeDefaultWatermark")))
-    mode = vcMT_ChangeDefaultWatermark;
-
-  if (mode < vcMT_Count)
-  {
-    pProgramState->modalOpen = true;
-    bool loadFile = ImGui::InputText(vcString::Get("convertPathURL"), pProgramState->modelPath, vcMaxPathLength, ImGuiInputTextFlags_EnterReturnsTrue);
-
-    ImGui::SameLine();
-
-    if (ImGui::Button(vcString::Get("convertLoadButton"), ImVec2(100.f, 0)))
-      loadFile = true;
-    ImGui::SameLine();
-
-    if (ImGui::Button(vcString::Get("convertCancelButton"), ImVec2(100.f, 0)) || vcHotkey::IsPressed(vcB_Cancel))
-      ImGui::CloseCurrentPopup();
-
-    ImGui::Separator();
-
-    const char *fileExtensions[] = { ".jpg", ".png", ".tga", ".bmp", ".gif" };
-    if (vcFileDialog_Show(pProgramState->modelPath, sizeof(pProgramState->modelPath), true, fileExtensions, udLengthOf(fileExtensions)))
-      loadFile = true;
-
-    if (loadFile)
-    {
-      if (mode == vcMT_LoadWatermark)
-      {
-        vdkConvert_AddWatermark(pProgramState->pConvertContext->jobs[pProgramState->pConvertContext->selectedItem]->pConvertContext, pProgramState->modelPath);
-        pProgramState->pConvertContext->jobs[pProgramState->pConvertContext->selectedItem]->watermark.isDirty = true;
-      }
-      else
-      {
-        udFilename filename = pProgramState->modelPath;
-        uint8_t *pData = nullptr;
-        int64_t dataLength = 0;
-        if (udFile_Load(pProgramState->modelPath, (void**)&pData, &dataLength) == udR_Success)
-        {
-          // TODO: Resize watermark to the same dimensions as vdkConvert does - maybe requires additional VDK functionality?
-          filename.SetFolder(pProgramState->settings.pSaveFilePath);
-          udFile_Save(filename, pData, (size_t)dataLength);
-          udFree(pData);
-        }
-        udStrcpy(pProgramState->settings.convertdefaults.watermark.filename, filename.GetFilenameWithExt());
-        pProgramState->settings.convertdefaults.watermark.isDirty = true;
-      }
-      ImGui::CloseCurrentPopup();
-    }
-
     ImGui::EndPopup();
   }
 }
@@ -891,7 +813,6 @@ void vcModals_DrawModals(vcState *pProgramState)
   vcModals_DrawNewVersionAvailable(pProgramState);
   vcModals_DrawTileServer(pProgramState);
   vcModals_DrawFileModal(pProgramState);
-  vcModals_DrawLoadWatermark(pProgramState);
   vcModals_DrawProjectChangeResult(pProgramState);
   vcModals_DrawProjectReadOnly(pProgramState);
   vcModals_DrawImageViewer(pProgramState);

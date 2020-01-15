@@ -142,7 +142,8 @@ struct vcSettings
     bool maximized;
     bool touchscreenFriendly;
 
-    bool presentationMode = false;
+    bool presentationMode;
+    bool useNativeUI;
 
     bool windowsOpen[vcDocks_Count];
 

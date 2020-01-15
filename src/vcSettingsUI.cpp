@@ -401,7 +401,23 @@ void vcSettingsUI_Show(vcState *pProgramState)
       ImGui::InputText(vcString::Get("convertTempDirectory"), pProgramState->settings.convertdefaults.tempDirectory, udLengthOf(pProgramState->settings.convertdefaults.tempDirectory));
 
       if (ImGui::Button(vcString::Get("convertChangeDefaultWatermark")))
-        vcModals_OpenModal(pProgramState, vcMT_ChangeDefaultWatermark);
+      {
+        vcFileDialog_Show(&pProgramState->fileDialog, pProgramState->modelPath, SupportedFileTypes_Images, true, [pProgramState] {
+          //reload stuff
+          udFilename filename = pProgramState->modelPath;
+          uint8_t *pData = nullptr;
+          int64_t dataLength = 0;
+          if (udFile_Load(pProgramState->modelPath, (void**)&pData, &dataLength) == udR_Success)
+          {
+            // TODO: Resize watermark to the same dimensions as vdkConvert does - maybe requires additional VDK functionality?
+            filename.SetFolder(pProgramState->settings.pSaveFilePath);
+            udFile_Save(filename, pData, (size_t)dataLength);
+            udFree(pData);
+          }
+          udStrcpy(pProgramState->settings.convertdefaults.watermark.filename, filename.GetFilenameWithExt());
+          pProgramState->settings.convertdefaults.watermark.isDirty = true;
+        });
+      }
 
       if (pProgramState->settings.convertdefaults.watermark.pTexture != nullptr)
       {
