@@ -4,6 +4,9 @@
 #include "vcState.h"
 #include "imgui.h"
 
+#include <windows.h>
+#include <ShlObj_core.h>
+
 void vcFileDialog_FreeDrives(const char ***ppDrives, uint8_t *pDriveCount)
 {
   if (ppDrives == nullptr || pDriveCount == nullptr)
@@ -155,4 +158,53 @@ bool vcFileDialog_DrawImGui(char *pPath, size_t pathLength, bool loadOnly /*= tr
   vcFileDialog_FreeDrives(&ppDrives, &length);
 
   return clickedFile; // return true if a file was selected
+}
+
+bool vcOpenFolder_Show(const char* pszTitle, char* pszPath)
+{
+#ifdef UDPLATFORM_WINDOWS
+  //Values
+  LPMALLOC        lpMalloc;
+  LPSHELLFOLDER   lpShellFolder;
+  BROWSEINFO      browseInfo;
+  LPITEMIDLIST    lpItemIdList;
+
+
+  char fullPath[vcMaxPathLength];
+  wchar_t seletePath[vcMaxPathLength];
+
+  //Initializing the SHBrowseForFolder function
+  if (SHGetMalloc(&lpMalloc) != NOERROR)
+    return false;
+  if (SHGetDesktopFolder(&lpShellFolder) != NOERROR)
+    return false;
+  ZeroMemory(&browseInfo, sizeof(BROWSEINFOW));
+  browseInfo.ulFlags += BIF_RETURNONLYFSDIRS;
+  browseInfo.hwndOwner = (HWND)nullptr;
+  browseInfo.pszDisplayName = seletePath;
+  udOSString tmpTitle = udOSString(pszTitle);
+  browseInfo.lpszTitle = tmpTitle.pWide;
+  browseInfo.lpfn = nullptr;
+
+  //Displaying
+  lpItemIdList = SHBrowseForFolder(&browseInfo);
+
+  //Releasing
+  lpShellFolder->Release();
+  if (lpItemIdList != NULL)
+  {
+    SHGetPathFromIDList(lpItemIdList, seletePath);
+    lpMalloc->Free(lpItemIdList);
+    lpMalloc->Release();
+
+    udOSString tmpPath(seletePath);
+    udSprintf(fullPath, "%s/", tmpPath.pUTF8);
+    memcpy(pszPath, fullPath, udStrlen(fullPath));
+
+    return true;
+  }
+  else
+    return false;
+#endif //WINDOWS
+  return false;
 }

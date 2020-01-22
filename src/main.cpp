@@ -2491,6 +2491,8 @@ void vcRenderWindow(vcState *pProgramState)
           spec.pszName = L"Any Supported";
           spec.pszSpec = pOSStr->pWide;
 
+          udOSString tmpTitle = udOSString(pProgramState->fileDialog.pTitle);
+          hr = pFileOpen->SetTitle(tmpTitle.pWide);
           hr = pFileOpen->SetFileTypes(1U, &spec);
           hr = pFileOpen->SetDefaultExtension(spec.pszSpec);
         }
@@ -2515,11 +2517,17 @@ void vcRenderWindow(vcState *pProgramState)
               if (SUCCEEDED(hr))
               {
                 udStrcpy(pProgramState->fileDialog.pPath, pProgramState->fileDialog.pathLen, udOSString(pszFilePath).pUTF8);
-                pProgramState->fileDialog.onSelect();
+                if(pProgramState->fileDialog.onSelect)
+                  pProgramState->fileDialog.onSelect();
                 CoTaskMemFree(pszFilePath);
               }
               pItem->Release();
             }
+          }
+          else
+          {
+            if (pProgramState->fileDialog.onCancel)
+              pProgramState->fileDialog.onCancel();
           }
         }
 

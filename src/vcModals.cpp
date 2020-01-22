@@ -411,133 +411,86 @@ bool vcModals_OverwriteExistingFile(const char *pFilename)
 
 void vcModals_DrawFileModal(vcState *pProgramState)
 {
-  if (pProgramState->openModals & (1 << vcMT_AddUDS))
-    ImGui::OpenPopup(vcString::Get("sceneExplorerAddUDSTitle"));
-  if (pProgramState->openModals & (1 << vcMT_ExportProject))
-    ImGui::OpenPopup(vcString::Get("menuProjectExportTitle"));
-  if (pProgramState->openModals & (1 << vcMT_ConvertAdd))
-    ImGui::OpenPopup(vcString::Get("convertAddFileTitle"));
-  if (pProgramState->openModals & (1 << vcMT_ConvertOutput))
-    ImGui::OpenPopup(vcString::Get("convertSetOutputTitle"));
-  if (pProgramState->openModals & (1 << vcMT_ConvertTempDirectory))
-    ImGui::OpenPopup(vcString::Get("convertSetTempDirectoryTitle"));
-
   vcModalTypes mode = vcMT_Count;
+  static char szTitleName[vcMaxPathLength];
+  memset(szTitleName, 0, strlen(szTitleName));
 
-  ImGui::SetNextWindowSize(ImVec2(800, 600), ImGuiCond_Appearing);
-  if (ImGui::BeginPopupModal(vcString::Get("sceneExplorerAddUDSTitle")))
+  if (pProgramState->openModals & (1 << vcMT_AddUDS))
     mode = vcMT_AddUDS;
-
-  ImGui::SetNextWindowSize(ImVec2(800, 600), ImGuiCond_Appearing);
-  if (ImGui::BeginPopupModal(vcString::Get("menuProjectExportTitle")))
+  if (pProgramState->openModals & (1 << vcMT_ExportProject))
     mode = vcMT_ExportProject;
-
-  ImGui::SetNextWindowSize(ImVec2(800, 600), ImGuiCond_Appearing);
-  if (ImGui::BeginPopupModal(vcString::Get("convertAddFileTitle")))
+  if (pProgramState->openModals & (1 << vcMT_ConvertAdd))
     mode = vcMT_ConvertAdd;
-
-  ImGui::SetNextWindowSize(ImVec2(800, 600), ImGuiCond_Appearing);
-  if (ImGui::BeginPopupModal(vcString::Get("convertSetOutputTitle")))
+  if (pProgramState->openModals & (1 << vcMT_ConvertOutput))
     mode = vcMT_ConvertOutput;
-
-  ImGui::SetNextWindowSize(ImVec2(800, 600), ImGuiCond_Appearing);
-  if (ImGui::BeginPopupModal(vcString::Get("convertSetTempDirectoryTitle")))
+  if (pProgramState->openModals & (1 << vcMT_ConvertTempDirectory))
     mode = vcMT_ConvertTempDirectory;
 
   if (mode < vcMT_Count)
   {
     pProgramState->modalOpen = true;
-    bool pressedEnter = ImGui::InputText(vcString::Get("sceneExplorerPathURL"), pProgramState->modelPath, vcMaxPathLength, ImGuiInputTextFlags_EnterReturnsTrue);
-
-    ImGui::SameLine();
-
-    bool loadFile = false;
-    bool saveFile = false;
-    if (mode == vcMT_ExportProject)
-      saveFile = (ImGui::Button(vcString::Get("sceneExplorerExportButton"), ImVec2(100.f, 0)) || pressedEnter);
-    else if (mode == vcMT_ConvertOutput || mode == vcMT_ConvertTempDirectory)
-      loadFile = (ImGui::Button(vcString::Get("sceneExplorerSetButton"), ImVec2(100.f, 0)) || pressedEnter);
-    else
-      loadFile = (ImGui::Button(vcString::Get("sceneExplorerLoadButton"), ImVec2(100.f, 0)) || pressedEnter);
-
-    ImGui::SameLine();
-
-    if (ImGui::Button(vcString::Get("sceneExplorerCancelButton"), ImVec2(100.f, 0)) || vcHotkey::IsPressed(vcB_Cancel))
-    {
-      pProgramState->modelPath[0] = '\0';
-      ImGui::CloseCurrentPopup();
-    }
-
-    ImGui::Separator();
 
     if (mode == vcMT_AddUDS)
     {
-      const char *fileExtensions[] = { ".uds", ".ssf", ".udg" };
-      if (vcFileDialog_DrawImGui(pProgramState->modelPath, sizeof(pProgramState->modelPath), true, fileExtensions, udLengthOf(fileExtensions)))
-        loadFile = true;
+      static const char* fileExtensions[] = { ".uds", ".ssf", ".udg" };
+      udStrcpy(szTitleName, vcString::Get("sceneExplorerAddUDSTitle"));
+      vcFileDialog_Show(&pProgramState->fileDialog, pProgramState->modelPath, fileExtensions, true, [pProgramState]() {
+        pProgramState->loadList.PushBack(udStrdup(pProgramState->modelPath));
+      }, [pProgramState]() {
+        pProgramState->modelPath[0] = '\0';
+      },
+      szTitleName);
     }
     else if (mode == vcMT_ExportProject)
     {
-      const char *fileExtensions[] = { ".json" };
-      if (vcFileDialog_DrawImGui(pProgramState->modelPath, sizeof(pProgramState->modelPath), false, fileExtensions, udLengthOf(fileExtensions)))
-        saveFile = true;
+      static const char *fileExtensions[] = { ".json" };
+      udStrcpy(szTitleName, vcString::Get("menuProjectExportTitle"));
+      vcFileDialog_Show(&pProgramState->fileDialog, pProgramState->modelPath, fileExtensions, true, [pProgramState]() {
+        vcProject_Save(pProgramState, pProgramState->modelPath, false);
+        pProgramState->modelPath[0] = '\0';
+      }, [pProgramState]() {
+        pProgramState->modelPath[0] = '\0';
+      },
+      szTitleName);
     }
     else if (mode == vcMT_ConvertAdd)
     {
       // TODO: List all supported conversion filetypes
-      if (vcFileDialog_DrawImGui(pProgramState->modelPath, sizeof(pProgramState->modelPath), false, nullptr, 0)) // No extensions means show every file
-        loadFile = true;
+      static const char* fileExtensions[] = { ".*" };
+      udStrcpy(szTitleName, vcString::Get("convertAddFileTitle"));
+      vcFileDialog_Show(&pProgramState->fileDialog, pProgramState->modelPath, fileExtensions, true, [pProgramState]() {
+        vcConvert_QueueFile(pProgramState, pProgramState->modelPath);
+      }, [pProgramState]() {
+        pProgramState->modelPath[0] = '\0';
+      },
+      szTitleName);
     }
     else if (mode == vcMT_ConvertOutput)
     {
-      const char *fileExtensions[] = { ".uds" };
-      if (vcFileDialog_DrawImGui(pProgramState->modelPath, sizeof(pProgramState->modelPath), false, fileExtensions, udLengthOf(fileExtensions)))
-        loadFile = true;
-    }
-    else if (mode == vcMT_ConvertTempDirectory)
-    {
-      const char *fileExtensions[] = { "/", "\\" };
-      if (vcFileDialog_DrawImGui(pProgramState->modelPath, sizeof(pProgramState->modelPath), false, fileExtensions, udLengthOf(fileExtensions)))
-        loadFile = true;
-    }
-
-    if (loadFile)
-    {
-#if VC_HASCONVERT
-      if (mode == vcMT_ConvertAdd)
-      {
-        vcConvert_QueueFile(pProgramState, pProgramState->modelPath);
-      }
-      else if (mode == vcMT_ConvertOutput)
-      {
+      static const char *fileExtensions[] = { ".uds" };
+      udStrcpy(szTitleName, vcString::Get("convertSetOutputTitle"));
+      vcFileDialog_Show(&pProgramState->fileDialog, pProgramState->modelPath, fileExtensions, true, [pProgramState]() {
         // Set output path and filename
         udFilename loadFilename(pProgramState->modelPath);
         loadFilename.SetExtension(".uds");
-        vdkConvertContext *pConvertContext = pProgramState->pConvertContext->jobs[pProgramState->pConvertContext->selectedItem]->pConvertContext;
+        vdkConvertContext* pConvertContext = pProgramState->pConvertContext->jobs[pProgramState->pConvertContext->selectedItem]->pConvertContext;
         vdkConvert_SetOutputFilename(pConvertContext, loadFilename.GetPath());
         // SetOutputFilename() overwrites the temp directory automatically, unless the user has modified it
-      }
-      else if (mode == vcMT_ConvertTempDirectory)
+      }, [pProgramState]() {
+        pProgramState->modelPath[0] = '\0';
+      },
+      szTitleName);
+    }
+    else if (mode == vcMT_ConvertTempDirectory)
+    {
+      memset(pProgramState->modelPath, 0, sizeof(pProgramState->modelPath));
+      if (vcOpenFolder_Show(vcString::Get("convertSetTempDirectoryTitle"), pProgramState->modelPath))
       {
         // Set temporary directory
-        vdkConvertContext *pConvertContext = pProgramState->pConvertContext->jobs[pProgramState->pConvertContext->selectedItem]->pConvertContext;
+        vdkConvertContext* pConvertContext = pProgramState->pConvertContext->jobs[pProgramState->pConvertContext->selectedItem]->pConvertContext;
         vdkConvert_SetTempDirectory(pConvertContext, pProgramState->modelPath);
       }
-      else
-#endif //VC_HASCONVERT
-      {
-        pProgramState->loadList.PushBack(udStrdup(pProgramState->modelPath));
-      }
-      pProgramState->modelPath[0] = '\0';
-      ImGui::CloseCurrentPopup();
     }
-    else if (saveFile)
-    {
-      vcProject_Save(pProgramState, pProgramState->modelPath, false);
-      pProgramState->modelPath[0] = '\0';
-      ImGui::CloseCurrentPopup();
-    }
-    ImGui::EndPopup();
   }
 }
 
